@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Toilet Paper Inventory Tracker</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js "></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js  "></script>
   <style>
     /* === Base Styles === */
     body {
@@ -39,7 +39,6 @@
     body.dark-mode h1 {
       color: #e2e8f0;
     }
-
     /* === Cute Toilet Roll Animations === */
     #animationContainer {
       position: absolute;
@@ -51,7 +50,6 @@
       overflow: visible;
       z-index: 10;
     }
-
     .toilet-roll {
       position: absolute;
       bottom: 0;
@@ -65,7 +63,6 @@
       box-shadow: inset 0 0 5px #aaa;
       animation: floatUp 1s ease-out forwards, rotate 2s linear forwards;
     }
-
     @keyframes floatUp {
       0% {
         transform: translateX(-50%) translateY(0) scale(1);
@@ -76,12 +73,10 @@
         opacity: 0;
       }
     }
-
     @keyframes rotate {
       0% { transform: translateX(-50%) rotate(0deg); }
       100% { transform: translateX(-50%) rotate(360deg); }
     }
-
     /* === Buttons & Actions === */
     .action-bar {
       display: flex;
@@ -105,7 +100,6 @@
       background: #2b6cb0;
       transform: scale(1.05);
     }
-
     /* === Input Grid === */
     .input-section {
       display: grid;
@@ -137,7 +131,6 @@
       border-color: #3182ce;
       box-shadow: 0 0 0 3px rgba(49, 130, 206, 0.2);
     }
-
     /* === Stock Display & Notification === */
     #currentStock {
       font-size: 1.25rem;
@@ -157,7 +150,6 @@
     #notification.show {
       display: block;
     }
-
     /* === Stats & Chart Sections === */
     .stats-section,
     .chart-section {
@@ -189,7 +181,6 @@
     body.dark-mode .stats-section td {
       border-bottom: 1px solid #718096;
     }
-
     /* === Inventory Table === */
     #inventoryTable {
       width: 100%;
@@ -225,7 +216,6 @@
     body.dark-mode #inventoryTable tr:hover {
       background: #4a5568;
     }
-
     /* === Responsive === */
     @media (max-width: 768px) {
       .input-section {
@@ -237,9 +227,10 @@
 <body>
 <div class="container">
   <h1>Toilet Paper Inventory Tracker</h1>
-
-  <!-- Animation Container -->
+  <!-- Animation & Sound -->
   <div id="animationContainer"></div>
+  <!-- Fart Sound -->
+  <audio id="fartSound" src="https://cdn.pixabay.com/audio/2022/03/15/audio_4b7859b054.mp3 "></audio>
 
   <div class="action-bar">
     <button class="action-button" onclick="exportCSV()">⬇ Export CSV</button>
@@ -279,17 +270,14 @@
 </div>
 
 <script>
-  /* === Variables & Constants === */
   let currentStock = 0;
   let entries = [];
   let chart = null;
   const LOW_STOCK_THRESHOLD = 10;
 
-  /* === Storage Setup === */
-  const JSONBIN_URL = 'https://api.jsonbin.io/v3/b/687b441d2de0201b319ce5a5 ';
+  const JSONBIN_URL = 'https://api.jsonbin.io/v3/b/687b441d2de0201b319ce5a5  ';
   const JSONBIN_API_KEY = '$2a$10$bLmxwVkBJlznwlJLqXxnC.CMz.Qqnt0BEr.lwxN3o/xAcUjiN6DQi';
 
-  /* === Save / Load === */
   async function fetchData() {
     try {
       const resp = await fetch(JSONBIN_URL, { headers: {'X-Access-Key': JSONBIN_API_KEY}});
@@ -315,7 +303,6 @@
     }
   }
 
-  /* === UI Updates === */
   function updateStockDisplay() {
     document.getElementById('stockCount').textContent = currentStock;
     const notif = document.getElementById('notification');
@@ -393,7 +380,6 @@
     chart.update();
   }
 
-  /* === Event Handlers === */
   function addRolls() {
     const qty = parseInt(document.getElementById('quantity').value);
     const person = document.getElementById('personName').value.trim();
@@ -411,6 +397,11 @@
     currentStock -= qty;
     logEntry('Out', qty, person);
     playRemoveAnimation(qty);
+
+    // Play cute fart sound 🎵
+    const fartSound = document.getElementById('fartSound');
+    fartSound.currentTime = 0;
+    fartSound.play();
   }
 
   function logEntry(type, quantity, person) {
@@ -482,7 +473,6 @@
 
   document.getElementById('search').addEventListener('input', e => updateTable(e.target.value));
 
-  /* === Initialization === */
   window.onload = async () => {
     if (localStorage.getItem('darkMode') === 'true') document.body.classList.add('dark-mode');
     await fetchData();
