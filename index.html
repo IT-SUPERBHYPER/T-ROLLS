@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Toilet Paper Inventory Tracker</title>
+  <title>Inventory Tracker</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js "></script>
   <style>
     /* === Base Styles === */
@@ -39,7 +39,7 @@
     body.dark-mode h1 {
       color: #e2e8f0;
     }
-    /* === Cute Toilet Roll Animations === */
+    /* === Cute Animations === */
     #animationContainer {
       position: absolute;
       top: 0;
@@ -103,14 +103,13 @@
     /* === Input Grid === */
     .input-section {
       display: grid;
-      grid-template-columns: 1fr 1fr auto auto;
+      grid-template-columns: 1fr 1fr auto auto auto;
       gap: 12px;
       margin-bottom: 24px;
       align-items: center;
     }
     input[type="number"],
     input[type="text"],
-    input[type="password"],
     select {
       padding: 10px;
       border: 1px solid #e2e8f0;
@@ -216,7 +215,6 @@
     body.dark-mode #inventoryTable tr:hover {
       background: #4a5568;
     }
-    /* === Responsive === */
     @media (max-width: 768px) {
       .input-section {
         grid-template-columns: 1fr;
@@ -226,12 +224,11 @@
 </head>
 <body>
 <div class="container">
-  <h1>Toilet Paper Inventory Tracker</h1>
-  <!-- Animation & Sound -->
+  <h1>Inventory Tracker</h1>
   <div id="animationContainer"></div>
   <!-- Sound Effects -->
-  <audio id="fartSound" src="https://cdn.pixabay.com/audio/2022/03/15/audio_4b7859b054.mp3" preload="auto"></audio>
-  <audio id="flushSound" src="https://cdn.pixabay.com/audio/2022/03/15/audio_455876b512.mp3" preload="auto"></audio>
+  <audio id="fartSound" src="https://cdn.pixabay.com/audio/2022/03/15/audio_4b7859b054.mp3 " preload="auto"></audio>
+  <audio id="flushSound" src="https://cdn.pixabay.com/audio/2022/03/15/audio_455876b512.mp3 " preload="auto"></audio>
 
   <div class="action-bar">
     <button class="action-button" onclick="exportCSV()">⬇ Export CSV</button>
@@ -241,43 +238,87 @@
     <button class="action-button" onclick="resetAllData()">🧹 Reset All</button>
     <button class="action-button" onclick="toggleSound()">🔊 Sound</button>
   </div>
+
   <div id="notification" role="alert"></div>
-  <div id="currentStock">Current Stock: <span id="stockCount">0</span> rolls</div>
+
+  <div id="currentStock">
+    <div><strong>Toilet Paper:</strong> <span id="stock_TP">0</span> units</div>
+    <div><strong>Saniwipes:</strong> <span id="stock_SW">0</span> units</div>
+    <div><strong>First Aid Plasters:</strong> <span id="stock_FAP">0</span> units</div>
+    <div><strong>First Aid Masks:</strong> <span id="stock_FAM">0</span> units</div>
+  </div>
+
   <div class="input-section">
     <input type="number" id="quantity" min="1" placeholder="Quantity"/>
     <input type="text" id="personName" placeholder="Person's Name" list="personSuggestions"/>
     <datalist id="personSuggestions"></datalist>
-    <button class="action-button" style="background:#38a169" onclick="addRolls()">Add Rolls (In)</button>
-    <button class="action-button" style="background:#e53e3e" onclick="removeRolls()">Remove Rolls (Out)</button>
+    <select id="itemType">
+      <option value="Toilet Paper">Toilet Paper</option>
+      <option value="Saniwipes">Saniwipes</option>
+      <option value="First Aid Plasters">First Aid Plasters</option>
+      <option value="First Aid Masks">First Aid Masks</option>
+    </select>
+    <button class="action-button" style="background:#38a169" onclick="addItem('In')">Add Item (In)</button>
+    <button class="action-button" style="background:#e53e3e" onclick="addItem('Out')">Remove Item (Out)</button>
   </div>
+
   <div class="search-section" style="margin-bottom:20px;">
-    <input type="text" id="search" placeholder="Search by person or type" style="width:100%; padding:10px; border:1px solid #e2e8f0; border-radius:8px;"/>
+    <input type="text" id="search" placeholder="Search by person or item" style="width:100%; padding:10px; border:1px solid #e2e8f0; border-radius:8px;"/>
   </div>
+
   <div class="stats-section" id="statsSection">
-    <table><thead>
-      <tr><th>Period</th><th>In</th><th>Out</th><th>Net</th><th>Balance</th></tr>
-    </thead><tbody>
-      <tr><td>Daily</td><td><span id="dailyIn">0</span></td><td><span id="dailyOut">0</span></td><td><span id="dailyNet">0</span></td><td><span id="dailyBalance">0</span></td></tr>
-      <tr><td>Weekly</td><td><span id="weeklyIn">0</span></td><td><span id="weeklyOut">0</span></td><td><span id="weeklyNet">0</span></td><td><span id="weeklyBalance">0</span></td></tr>
-      <tr><td>Monthly</td><td><span id="monthlyIn">0</span></td><td><span id="monthlyOut">0</span></td><td><span id="monthlyNet">0</span></td><td><span id="monthlyBalance">0</span></td></tr>
-    </tbody></table>
+    <h3>Item Statistics</h3>
+    <select id="statsItemType" onchange="updateReports()">
+      <option value="All">All Items</option>
+      <option value="Toilet Paper">Toilet Paper</option>
+      <option value="Saniwipes">Saniwipes</option>
+      <option value="First Aid Plasters">First Aid Plasters</option>
+      <option value="First Aid Masks">First Aid Masks</option>
+    </select>
+    <table>
+      <thead>
+        <tr><th>Period</th><th>In</th><th>Out</th><th>Net</th><th>Balance</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Daily</td><td><span id="dailyIn">0</span></td><td><span id="dailyOut">0</span></td><td><span id="dailyNet">0</span></td><td><span id="dailyBalance">0</span></td></tr>
+        <tr><td>Weekly</td><td><span id="weeklyIn">0</span></td><td><span id="weeklyOut">0</span></td><td><span id="weeklyNet">0</span></td><td><span id="weeklyBalance">0</span></td></tr>
+        <tr><td>Monthly</td><td><span id="monthlyIn">0</span></td><td><span id="monthlyOut">0</span></td><td><span id="monthlyNet">0</span></td><td><span id="monthlyBalance">0</span></td></tr>
+      </tbody>
+    </table>
   </div>
+
   <div class="chart-section" id="chartSection">
+    <h3>Inventory Chart</h3>
+    <select id="chartItemType" onchange="initChart()">
+      <option value="All">All Items</option>
+      <option value="Toilet Paper">Toilet Paper</option>
+      <option value="Saniwipes">Saniwipes</option>
+      <option value="First Aid Plasters">First Aid Plasters</option>
+      <option value="First Aid Masks">First Aid Masks</option>
+    </select>
     <canvas id="inventoryChart" style="height: 250px;"></canvas>
   </div>
+
   <table id="inventoryTable" role="grid">
-    <thead><tr><th>Date</th><th>Type</th><th>Quantity</th><th>Person</th><th>Balance</th></tr></thead>
+    <thead>
+      <tr><th>Date</th><th>Item</th><th>Type</th><th>Quantity</th><th>Person</th><th>Balance</th></tr>
+    </thead>
     <tbody id="tableBody"></tbody>
   </table>
 </div>
 
 <script>
-  let currentStock = 0;
+  const ITEM_TYPES = {
+    "Toilet Paper": 0,
+    "Saniwipes": 0,
+    "First Aid Plasters": 0,
+    "First Aid Masks": 0
+  };
+
+  let currentStock = { ...ITEM_TYPES };
   let entries = [];
   let chart = null;
-  const LOW_STOCK_THRESHOLD = 10;
-
-  // Sound toggle
+  const LOW_STOCK_THRESHOLD = 5;
   let soundEnabled = true;
 
   function toggleSound() {
@@ -309,18 +350,21 @@
       });
       const data = await resp.json();
       entries = data.record.inventoryEntries || [];
-      currentStock = entries.length > 0 ? entries[entries.length - 1].balance : 0;
+      currentStock = { ...ITEM_TYPES };
+      entries.forEach(e => {
+        currentStock[e.item] = e.balance;
+      });
     } catch (e) {
       console.warn('Failed to load data, using empty store.', e);
       entries = [];
-      currentStock = 0;
+      currentStock = { ...ITEM_TYPES };
     }
     updateStockDisplay();
   }
 
   async function saveData() {
     try {
-      await fetch('https://api.jsonbin.io/v3/b/687b441d2de0201b319ce5a5 ', {
+      await fetch('https://api.jsonbin.io/v3/b/b61f9e68e4dcf545937f5d45 ', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -334,13 +378,19 @@
   }
 
   function updateStockDisplay() {
-    document.getElementById('stockCount').textContent = currentStock;
+    document.getElementById('stock_TP').textContent = currentStock["Toilet Paper"];
+    document.getElementById('stock_SW').textContent = currentStock["Saniwipes"];
+    document.getElementById('stock_FAP').textContent = currentStock["First Aid Plasters"];
+    document.getElementById('stock_FAM').textContent = currentStock["First Aid Masks"];
+
     const notif = document.getElementById('notification');
-    if (currentStock <= LOW_STOCK_THRESHOLD) {
-      notif.textContent = `Warning: low stock (${currentStock} rolls)!`;
-      notif.classList.add('show');
-    } else {
-      notif.classList.remove('show');
+    notif.classList.remove('show');
+    for (let item in currentStock) {
+      if (currentStock[item] <= LOW_STOCK_THRESHOLD) {
+        notif.textContent = `Warning: low stock for ${item} (${currentStock[item]} units)!`;
+        notif.classList.add('show');
+        break;
+      }
     }
   }
 
@@ -349,12 +399,14 @@
     tb.innerHTML = '';
     const filtered = entries.filter(e =>
       e.person.toLowerCase().includes(filter.toLowerCase()) ||
+      e.item.toLowerCase().includes(filter.toLowerCase()) ||
       e.type.toLowerCase().includes(filter.toLowerCase())
     );
     filtered.slice().reverse().forEach(e => {
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td>${new Date(e.date).toLocaleString()}</td>
+        <td>${e.item}</td>
         <td>${e.type}</td>
         <td>${e.quantity}</td>
         <td>${e.person}</td>
@@ -363,36 +415,42 @@
     });
   }
 
-  function addRolls() {
+  function addItem(type) {
     const qty = parseInt(document.getElementById('quantity').value);
     const person = document.getElementById('personName').value.trim();
-    if (!qty || !person) { alert('Please enter both a valid quantity and name.'); return; }
-    currentStock += qty;
-    logEntry('In', qty, person);
-    playAddAnimation(qty);
-    playFlushSound();
-  }
+    const item = document.getElementById('itemType').value;
 
-  function removeRolls() {
-    const qty = parseInt(document.getElementById('quantity').value);
-    const person = document.getElementById('personName').value.trim();
-    if (!qty || !person) { alert('Please enter both a valid quantity and name.'); return; }
-    if (qty > currentStock) { alert('Cannot remove more rolls than in stock.'); return; }
-    currentStock -= qty;
-    logEntry('Out', qty, person);
-    playRemoveAnimation(qty);
-    playFartSound();
-    playFlushSound();
-  }
+    if (!qty || !person || !item) {
+      alert('Please enter valid quantity, name, and item type.');
+      return;
+    }
 
-  function logEntry(type, quantity, person) {
+    if (type === 'Out' && qty > currentStock[item]) {
+      alert('Cannot remove more than what is in stock.');
+      return;
+    }
+
     const entry = {
       date: new Date(),
-      type, quantity, person,
-      balance: currentStock
+      type,
+      item,
+      quantity: qty,
+      person,
+      balance: type === 'In' ? currentStock[item] + qty : currentStock[item] - qty
     };
+
     entries.push(entry);
+    currentStock[item] = entry.balance;
+
     saveData();
+    playFlushSound();
+    if (type === 'Out') {
+      playFartSound();
+      playRemoveAnimation(qty);
+    } else {
+      playAddAnimation(qty);
+    }
+
     document.getElementById('quantity').value = '';
     document.getElementById('personName').value = '';
     updateStockDisplay();
@@ -425,7 +483,7 @@
   function resetAllData() {
     if (confirm('Are you sure you want to delete ALL data? This cannot be undone.')) {
       entries = [];
-      currentStock = 0;
+      currentStock = { ...ITEM_TYPES };
       saveData();
       updateStockDisplay();
       updateTable('');
@@ -455,15 +513,22 @@
   document.getElementById('search').addEventListener('input', e => updateTable(e.target.value));
 
   function updateReports() {
+    const itemFilter = document.getElementById('statsItemType').value;
     const now = Date.now();
     const dayMS = 86400000;
     const spans = ['daily', 'weekly', 'monthly'];
     const limits = [dayMS, dayMS * 7, dayMS * 30];
+
     spans.forEach((span, i) => {
-      const subset = entries.filter(e => now - new Date(e.date) <= limits[i]);
+      const subset = entries.filter(e => {
+        const withinTime = now - new Date(e.date) <= limits[i];
+        return withinTime && (itemFilter === 'All' || e.item === itemFilter);
+      });
+
       const ins = subset.filter(e => e.type === 'In').reduce((s, e) => s + e.quantity, 0);
       const outs = subset.filter(e => e.type === 'Out').reduce((s, e) => s + e.quantity, 0);
-      const bal = subset.length ? subset[subset.length - 1].balance : currentStock;
+      const bal = subset.length ? subset[subset.length - 1].balance : 0;
+
       document.getElementById(`${span}In`).textContent = ins;
       document.getElementById(`${span}Out`).textContent = outs;
       document.getElementById(`${span}Net`).textContent = ins - outs;
@@ -472,13 +537,21 @@
   }
 
   function initChart() {
+    const itemType = document.getElementById('chartItemType').value;
     const ctx = document.getElementById('inventoryChart').getContext('2d');
+
     const now = Date.now();
     const monthMS = 2592000000;
-    const filtered = entries.filter(e => now - new Date(e.date) <= monthMS);
+    const filtered = entries.filter(e => {
+      const withinTime = now - new Date(e.date) <= monthMS;
+      return withinTime && (itemType === 'All' || e.item === itemType);
+    });
+
     const days = [...new Set(filtered.map(e => new Date(e.date).toLocaleDateString()))];
     const inData = days.map(d => filtered.filter(e => new Date(e.date).toLocaleDateString() === d && e.type === 'In').reduce((s, e) => s + e.quantity, 0));
     const outData = days.map(d => filtered.filter(e => new Date(e.date).toLocaleDateString() === d && e.type === 'Out').reduce((s, e) => s + e.quantity, 0));
+
+    if (chart) chart.destroy();
     chart = new Chart(ctx, {
       type: 'bar',
       data: {
@@ -499,13 +572,9 @@
   function applyChartTheme() {
     if (!chart) return;
     const isDark = document.body.classList.contains('dark-mode');
-    chart.options.plugins = {
-      legend: { labels: { color: isDark ? '#e2e8f0' : '#2d3748' }}
-    };
-    chart.options.scales = {
-      x: { ticks: { color: isDark ? '#e2e8f0' : '#2d3748' }},
-      y: { ticks: { color: isDark ? '#e2e8f0' : '#2d3748' }}
-    };
+    chart.options.plugins.legend.labels.color = isDark ? '#e2e8f0' : '#2d3748';
+    chart.options.scales.x.ticks.color = isDark ? '#e2e8f0' : '#2d3748';
+    chart.options.scales.y.ticks.color = isDark ? '#e2e8f0' : '#2d3748';
     chart.update();
   }
 
@@ -516,6 +585,20 @@
     updateTable('');
     updateReports();
   };
+
+  function exportCSV() {
+    let csv = 'Date,Item,Type,Quantity,Person,Balance\n';
+    entries.forEach(e => {
+      csv += `"${new Date(e.date).toLocaleString()}","${e.item}","${e.type}",${e.quantity},"${e.person}",${e.balance}\n`;
+    });
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'inventory_log.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
 </script>
 </body>
 </html>
