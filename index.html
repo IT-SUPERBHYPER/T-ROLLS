@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Toilet Paper Inventory Tracker</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js  "></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js "></script>
   <style>
     /* === Base Styles === */
     body {
@@ -229,8 +229,9 @@
   <h1>Toilet Paper Inventory Tracker</h1>
   <!-- Animation & Sound -->
   <div id="animationContainer"></div>
-  <!-- Fart Sound -->
-  <audio id="fartSound" src="https://cdn.pixabay.com/audio/2022/03/15/audio_4b7859b054.mp3 "></audio>
+  <!-- Sound Effects -->
+  <audio id="fartSound" src="https://cdn.pixabay.com/audio/2022/03/15/audio_4b7859b054.mp3 " preload="auto"></audio>
+  <audio id="flushSound" src="https://cdn.pixabay.com/audio/2022/03/15/audio_455876b512.mp3 " preload="auto"></audio>
 
   <div class="action-bar">
     <button class="action-button" onclick="exportCSV()">⬇ Export CSV</button>
@@ -238,6 +239,7 @@
     <button class="action-button" onclick="toggleChart()">📈 Show Chart</button>
     <button class="action-button" onclick="toggleDarkMode()">🌙 Dark Mode</button>
     <button class="action-button" onclick="resetAllData()">🧹 Reset All</button>
+    <button class="action-button" onclick="toggleSound()">🔊 Sound</button>
   </div>
   <div id="notification" role="alert"></div>
   <div id="currentStock">Current Stock: <span id="stockCount">0</span> rolls</div>
@@ -275,30 +277,58 @@
   let chart = null;
   const LOW_STOCK_THRESHOLD = 10;
 
-  const JSONBIN_URL = 'https://api.jsonbin.io/v3/b/687b441d2de0201b319ce5a5  ';
-  const JSONBIN_API_KEY = '$2a$10$bLmxwVkBJlznwlJLqXxnC.CMz.Qqnt0BEr.lwxN3o/xAcUjiN6DQi';
+  // Sound toggle
+  let soundEnabled = true;
+
+  function toggleSound() {
+    soundEnabled = !soundEnabled;
+    const btn = event.target;
+    btn.textContent = soundEnabled ? '🔊 Sound' : '🔇 Mute';
+  }
+
+  function playFartSound() {
+    if (!soundEnabled) return;
+    const fart = document.getElementById('fartSound');
+    fart.volume = 1.0;
+    fart.currentTime = 0;
+    fart.play().catch(e => console.warn("Fart sound blocked by browser:", e));
+  }
+
+  function playFlushSound() {
+    if (!soundEnabled) return;
+    const flush = document.getElementById('flushSound');
+    flush.volume = 1.0;
+    flush.currentTime = 0;
+    flush.play().catch(e => console.warn("Flush sound blocked by browser:", e));
+  }
 
   async function fetchData() {
     try {
-      const resp = await fetch(JSONBIN_URL, { headers: {'X-Access-Key': JSONBIN_API_KEY}});
+      const resp = await fetch('https://api.jsonbin.io/v3/b/687b441d2de0201b319ce5a5 ', {
+        headers: { 'X-Access-Key': '$2a$10$bLmxwVkBJlznwlJLqXxnC.CMz.Qqnt0BEr.lwxN3o/xAcUjiN6DQi' }
+      });
       const data = await resp.json();
       entries = data.record.inventoryEntries || [];
       currentStock = entries.length > 0 ? entries[entries.length - 1].balance : 0;
     } catch (e) {
-      console.warn('Failed load, using empty store.', e);
+      console.warn('Failed to load data, using empty store.', e);
       entries = [];
       currentStock = 0;
     }
+    updateStockDisplay();
   }
 
   async function saveData() {
     try {
-      await fetch(JSONBIN_URL, {
+      await fetch('https://api.jsonbin.io/v3/b/687b441d2de0201b319ce5a5 ', {
         method: 'PUT',
-        headers: {'Content-Type':'application/json','X-Access-Key':JSONBIN_API_KEY},
-        body: JSON.stringify({inventoryEntries: entries})
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Access-Key': '$2a$10$bLmxwVkBJlznwlJLqXxnC.CMz.Qqnt0BEr.lwxN3o/xAcUjiN6DQi'
+        },
+        body: JSON.stringify({ inventoryEntries: entries })
       });
-    } catch(e) {
+    } catch (e) {
       console.error('Save failed:', e);
     }
   }
@@ -333,53 +363,6 @@
     });
   }
 
-  function updateReports() {
-    const now = Date.now();
-    const dayMS = 86400000;
-    const spans = ['daily', 'weekly', 'monthly'];
-    const limits = [dayMS, dayMS * 7, dayMS * 30];
-    spans.forEach((span, i) => {
-      const subset = entries.filter(e => now - new Date(e.date) <= limits[i]);
-      const ins = subset.filter(e => e.type === 'In').reduce((s,e)=>s+e.quantity,0);
-      const outs = subset.filter(e => e.type === 'Out').reduce((s,e)=>s+e.quantity,0);
-      const bal = subset.length ? subset[subset.length-1].balance : currentStock;
-      document.getElementById(`${span}In`).textContent = ins;
-      document.getElementById(`${span}Out`).textContent = outs;
-      document.getElementById(`${span}Net`).textContent = ins - outs;
-      document.getElementById(`${span}Balance`).textContent = bal;
-    });
-  }
-
-  function initChart() {
-    const ctx = document.getElementById('inventoryChart').getContext('2d');
-    const now = Date.now();
-    const monthMS = 2592000000;
-    const filtered = entries.filter(e => now - new Date(e.date) <= monthMS);
-    const days = [...new Set(filtered.map(e => new Date(e.date).toLocaleDateString()))];
-    const inData = days.map(d => filtered.filter(e => new Date(e.date).toLocaleDateString() === d && e.type==='In').reduce((s,e)=>s+e.quantity,0));
-    const outData = days.map(d => filtered.filter(e => new Date(e.date).toLocaleDateString() === d && e.type==='Out').reduce((s,e)=>s+e.quantity,0));
-    chart = new Chart(ctx, {
-      type: 'bar',
-      data: { labels: days, datasets: [
-        { label: 'In', data: inData, backgroundColor: '#38a169' },
-        { label: 'Out', data: outData, backgroundColor: '#e53e3e' }
-      ]},
-      options: { scales: { x: { stacked: true }, y: { beginAtZero: true }}, responsive:true }
-    });
-    applyChartTheme();
-  }
-
-  function applyChartTheme() {
-    if (!chart) return;
-    const isDark = document.body.classList.contains('dark-mode');
-    chart.options.plugins = { legend: { labels: { color: isDark? '#e2e8f0' : '#2d3748' }}};
-    chart.options.scales = {
-      x: { ticks: { color: isDark? '#e2e8f0' : '#2d3748' } },
-      y: { ticks: { color: isDark? '#e2e8f0' : '#2d3748' } }
-    };
-    chart.update();
-  }
-
   function addRolls() {
     const qty = parseInt(document.getElementById('quantity').value);
     const person = document.getElementById('personName').value.trim();
@@ -387,6 +370,7 @@
     currentStock += qty;
     logEntry('In', qty, person);
     playAddAnimation(qty);
+    playFlushSound();
   }
 
   function removeRolls() {
@@ -397,11 +381,8 @@
     currentStock -= qty;
     logEntry('Out', qty, person);
     playRemoveAnimation(qty);
-
-    // Play cute fart sound 🎵
-    const fartSound = document.getElementById('fartSound');
-    fartSound.currentTime = 0;
-    fartSound.play();
+    playFartSound();
+    playFlushSound();
   }
 
   function logEntry(type, quantity, person) {
@@ -449,7 +430,7 @@
       updateStockDisplay();
       updateTable('');
       updateReports();
-      if (chart) { chart.destroy(); chart=null; }
+      if (chart) { chart.destroy(); chart = null; }
       document.getElementById('chartSection').classList.remove('show');
       alert('All data has been reset.');
     }
@@ -472,6 +453,61 @@
   }
 
   document.getElementById('search').addEventListener('input', e => updateTable(e.target.value));
+
+  function updateReports() {
+    const now = Date.now();
+    const dayMS = 86400000;
+    const spans = ['daily', 'weekly', 'monthly'];
+    const limits = [dayMS, dayMS * 7, dayMS * 30];
+    spans.forEach((span, i) => {
+      const subset = entries.filter(e => now - new Date(e.date) <= limits[i]);
+      const ins = subset.filter(e => e.type === 'In').reduce((s, e) => s + e.quantity, 0);
+      const outs = subset.filter(e => e.type === 'Out').reduce((s, e) => s + e.quantity, 0);
+      const bal = subset.length ? subset[subset.length - 1].balance : currentStock;
+      document.getElementById(`${span}In`).textContent = ins;
+      document.getElementById(`${span}Out`).textContent = outs;
+      document.getElementById(`${span}Net`).textContent = ins - outs;
+      document.getElementById(`${span}Balance`).textContent = bal;
+    });
+  }
+
+  function initChart() {
+    const ctx = document.getElementById('inventoryChart').getContext('2d');
+    const now = Date.now();
+    const monthMS = 2592000000;
+    const filtered = entries.filter(e => now - new Date(e.date) <= monthMS);
+    const days = [...new Set(filtered.map(e => new Date(e.date).toLocaleDateString()))];
+    const inData = days.map(d => filtered.filter(e => new Date(e.date).toLocaleDateString() === d && e.type === 'In').reduce((s, e) => s + e.quantity, 0));
+    const outData = days.map(d => filtered.filter(e => new Date(e.date).toLocaleDateString() === d && e.type === 'Out').reduce((s, e) => s + e.quantity, 0));
+    chart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: days,
+        datasets: [
+          { label: 'In', data: inData, backgroundColor: '#38a169' },
+          { label: 'Out', data: outData, backgroundColor: '#e53e3e' }
+        ]
+      },
+      options: {
+        scales: { x: { stacked: true }, y: { beginAtZero: true }},
+        responsive: true
+      }
+    });
+    applyChartTheme();
+  }
+
+  function applyChartTheme() {
+    if (!chart) return;
+    const isDark = document.body.classList.contains('dark-mode');
+    chart.options.plugins = {
+      legend: { labels: { color: isDark ? '#e2e8f0' : '#2d3748' }}
+    };
+    chart.options.scales = {
+      x: { ticks: { color: isDark ? '#e2e8f0' : '#2d3748' }},
+      y: { ticks: { color: isDark ? '#e2e8f0' : '#2d3748' }}
+    };
+    chart.update();
+  }
 
   window.onload = async () => {
     if (localStorage.getItem('darkMode') === 'true') document.body.classList.add('dark-mode');
