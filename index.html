@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Toilet Paper Inventory Tracker</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js "></script>
+  <style>
+    /* === Base Styles === */
+    body {
+      font-family: 'Inter', sans-serif;
+      max-width: 900px;
+      margin: 20px auto;
+      padding: 16px;
+      background: #f7fafc;
+      color: #2d3748;
+      transition: background 0.3s, color 0.3s;
+    }
+    body.dark-mode {
+      background: #1a202c;
+      color: #e2e8f0;
+    }
+    .container {
+      background: white;
+      padding: 24px;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+      position: relative;
+    }
+    body.dark-mode .container {
+      background: #2d3748;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+    }
+    h1 {
+      text-align: center;
+      font-size: 1.75rem;
+      margin-bottom: 20px;
+    }
+    body.dark-mode h1 {
+      color: #e2e8f0;
+    }
+
+    /* === Cute Toilet Roll Animations === */
+    #animationContainer {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 150px;
+      pointer-events: none;
+      overflow: visible;
+      z-index: 10;
+    }
+
+    .toilet-roll {
+      position: absolute;
+      bottom: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 40px;
+      height: 40px;
+      background: white;
+      border: 2px solid #ccc;
+      border-radius: 50%;
+      box-shadow: inset 0 0 5px #aaa;
+      animation: floatUp 1s ease-out forwards, rotate 2s linear forwards;
+    }
+
+    @keyframes floatUp {
+      0% {
+        transform: translateX(-50%) translateY(0) scale(1);
+        opacity: 1;
+      }
+      100% {
+        transform: translateX(-50%) translateY(-100px) scale(1.2);
+        opacity: 0;
+      }
+    }
+
+    @keyframes rotate {
+      0% { transform: translateX(-50%) rotate(0deg); }
+      100% { transform: translateX(-50%) rotate(360deg); }
+    }
+
+    /* === Buttons & Actions === */
+    .action-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: center;
+      margin-bottom: 20px;
+    }
+    .action-button {
+      background: #3182ce;
+      color: white;
+      border: none;
+      padding: 10px 16px;
+      font-size: 0.95rem;
+      font-weight: 500;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .action-button:hover {
+      background: #2b6cb0;
+      transform: scale(1.05);
+    }
+
+    /* === Input Grid === */
+    .input-section {
+      display: grid;
+      grid-template-columns: 1fr 1fr auto auto;
+      gap: 12px;
+      margin-bottom: 24px;
+      align-items: center;
+    }
+    input[type="number"],
+    input[type="text"],
+    input[type="password"],
+    select {
+      padding: 10px;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      width: 100%;
+      background: white;
+      color: #2d3748;
+      transition: background 0.2s, color 0.2s;
+    }
+    body.dark-mode input {
+      background: #4a5568;
+      border-color: #718096;
+      color: #e2e8f0;
+    }
+    input:focus {
+      outline: none;
+      border-color: #3182ce;
+      box-shadow: 0 0 0 3px rgba(49, 130, 206, 0.2);
+    }
+
+    /* === Stock Display & Notification === */
+    #currentStock {
+      font-size: 1.25rem;
+      font-weight: 600;
+      text-align: center;
+      margin: 20px 0;
+    }
+    #notification {
+      display: none;
+      padding: 10px;
+      background: #fed7d7;
+      color: #9b2c2c;
+      border-radius: 8px;
+      margin-bottom: 16px;
+      text-align: center;
+    }
+    #notification.show {
+      display: block;
+    }
+
+    /* === Stats & Chart Sections === */
+    .stats-section,
+    .chart-section {
+      background: #edf2f7;
+      padding: 20px;
+      border-radius: 8px;
+      margin-bottom: 24px;
+      display: none;
+    }
+    body.dark-mode .stats-section,
+    body.dark-mode .chart-section {
+      background: #4a5568;
+    }
+    .stats-section.show,
+    .chart-section.show {
+      display: block;
+    }
+    .stats-section table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9rem;
+    }
+    .stats-section th,
+    .stats-section td {
+      padding: 12px;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    body.dark-mode .stats-section th,
+    body.dark-mode .stats-section td {
+      border-bottom: 1px solid #718096;
+    }
+
+    /* === Inventory Table === */
+    #inventoryTable {
+      width: 100%;
+      border-spacing: 0;
+      border-radius: 8px;
+      overflow: hidden;
+      background: white;
+      font-size: 0.9rem;
+    }
+    body.dark-mode #inventoryTable {
+      background: #2d3748;
+    }
+    #inventoryTable th,
+    #inventoryTable td {
+      padding: 10px 12px;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    body.dark-mode #inventoryTable th,
+    body.dark-mode #inventoryTable td {
+      border-bottom: 1px solid #718096;
+    }
+    #inventoryTable th {
+      background: #f7fafc;
+      font-weight: 600;
+    }
+    body.dark-mode #inventoryTable th {
+      background: #4a5568;
+      color: #e2e8f0;
+    }
+    #inventoryTable tr:hover {
+      background: #f7fafc;
+    }
+    body.dark-mode #inventoryTable tr:hover {
+      background: #4a5568;
+    }
+
+    /* === Responsive === */
+    @media (max-width: 768px) {
+      .input-section {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h1>Toilet Paper Inventory Tracker</h1>
+
+  <!-- Animation Container -->
+  <div id="animationContainer"></div>
+
+  <div class="action-bar">
+    <button class="action-button" onclick="exportCSV()">⬇ Export CSV</button>
+    <button class="action-button" onclick="toggleStats()">📊 Show Reports</button>
+    <button class="action-button" onclick="toggleChart()">📈 Show Chart</button>
+    <button class="action-button" onclick="toggleDarkMode()">🌙 Dark Mode</button>
+    <button class="action-button" onclick="resetAllData()">🧹 Reset All</button>
+  </div>
+  <div id="notification" role="alert"></div>
+  <div id="currentStock">Current Stock: <span id="stockCount">0</span> rolls</div>
+  <div class="input-section">
+    <input type="number" id="quantity" min="1" placeholder="Quantity"/>
+    <input type="text" id="personName" placeholder="Person's Name" list="personSuggestions"/>
+    <datalist id="personSuggestions"></datalist>
+    <button class="action-button" style="background:#38a169" onclick="addRolls()">Add Rolls (In)</button>
+    <button class="action-button" style="background:#e53e3e" onclick="removeRolls()">Remove Rolls (Out)</button>
+  </div>
+  <div class="search-section" style="margin-bottom:20px;">
+    <input type="text" id="search" placeholder="Search by person or type" style="width:100%; padding:10px; border:1px solid #e2e8f0; border-radius:8px;"/>
+  </div>
+  <div class="stats-section" id="statsSection">
+    <table><thead>
+      <tr><th>Period</th><th>In</th><th>Out</th><th>Net</th><th>Balance</th></tr>
+    </thead><tbody>
+      <tr><td>Daily</td><td><span id="dailyIn">0</span></td><td><span id="dailyOut">0</span></td><td><span id="dailyNet">0</span></td><td><span id="dailyBalance">0</span></td></tr>
+      <tr><td>Weekly</td><td><span id="weeklyIn">0</span></td><td><span id="weeklyOut">0</span></td><td><span id="weeklyNet">0</span></td><td><span id="weeklyBalance">0</span></td></tr>
+      <tr><td>Monthly</td><td><span id="monthlyIn">0</span></td><td><span id="monthlyOut">0</span></td><td><span id="monthlyNet">0</span></td><td><span id="monthlyBalance">0</span></td></tr>
+    </tbody></table>
+  </div>
+  <div class="chart-section" id="chartSection">
+    <canvas id="inventoryChart" style="height: 250px;"></canvas>
+  </div>
+  <table id="inventoryTable" role="grid">
+    <thead><tr><th>Date</th><th>Type</th><th>Quantity</th><th>Person</th><th>Balance</th></tr></thead>
+    <tbody id="tableBody"></tbody>
+  </table>
+</div>
+
+<script>
+  /* === Variables & Constants === */
+  let currentStock = 0;
+  let entries = [];
+  let chart = null;
+  const LOW_STOCK_THRESHOLD = 10;
+
+  /* === Storage Setup === */
+  const JSONBIN_URL = 'https://api.jsonbin.io/v3/b/687b441d2de0201b319ce5a5 ';
+  const JSONBIN_API_KEY = '$2a$10$bLmxwVkBJlznwlJLqXxnC.CMz.Qqnt0BEr.lwxN3o/xAcUjiN6DQi';
+
+  /* === Save / Load === */
+  async function fetchData() {
+    try {
+      const resp = await fetch(JSONBIN_URL, { headers: {'X-Access-Key': JSONBIN_API_KEY}});
+      const data = await resp.json();
+      entries = data.record.inventoryEntries || [];
+      currentStock = entries.length > 0 ? entries[entries.length - 1].balance : 0;
+    } catch (e) {
+      console.warn('Failed load, using empty store.', e);
+      entries = [];
+      currentStock = 0;
+    }
+  }
+
+  async function saveData() {
+    try {
+      await fetch(JSONBIN_URL, {
+        method: 'PUT',
+        headers: {'Content-Type':'application/json','X-Access-Key':JSONBIN_API_KEY},
+        body: JSON.stringify({inventoryEntries: entries})
+      });
+    } catch(e) {
+      console.error('Save failed:', e);
+    }
+  }
+
+  /* === UI Updates === */
+  function updateStockDisplay() {
+    document.getElementById('stockCount').textContent = currentStock;
+    const notif = document.getElementById('notification');
+    if (currentStock <= LOW_STOCK_THRESHOLD) {
+      notif.textContent = `Warning: low stock (${currentStock} rolls)!`;
+      notif.classList.add('show');
+    } else {
+      notif.classList.remove('show');
+    }
+  }
+
+  function updateTable(filter = '') {
+    const tb = document.getElementById('tableBody');
+    tb.innerHTML = '';
+    const filtered = entries.filter(e =>
+      e.person.toLowerCase().includes(filter.toLowerCase()) ||
+      e.type.toLowerCase().includes(filter.toLowerCase())
+    );
+    filtered.slice().reverse().forEach(e => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${new Date(e.date).toLocaleString()}</td>
+        <td>${e.type}</td>
+        <td>${e.quantity}</td>
+        <td>${e.person}</td>
+        <td>${e.balance}</td>`;
+      tb.appendChild(tr);
+    });
+  }
+
+  function updateReports() {
+    const now = Date.now();
+    const dayMS = 86400000;
+    const spans = ['daily', 'weekly', 'monthly'];
+    const limits = [dayMS, dayMS * 7, dayMS * 30];
+    spans.forEach((span, i) => {
+      const subset = entries.filter(e => now - new Date(e.date) <= limits[i]);
+      const ins = subset.filter(e => e.type === 'In').reduce((s,e)=>s+e.quantity,0);
+      const outs = subset.filter(e => e.type === 'Out').reduce((s,e)=>s+e.quantity,0);
+      const bal = subset.length ? subset[subset.length-1].balance : currentStock;
+      document.getElementById(`${span}In`).textContent = ins;
+      document.getElementById(`${span}Out`).textContent = outs;
+      document.getElementById(`${span}Net`).textContent = ins - outs;
+      document.getElementById(`${span}Balance`).textContent = bal;
+    });
+  }
+
+  function initChart() {
+    const ctx = document.getElementById('inventoryChart').getContext('2d');
+    const now = Date.now();
+    const monthMS = 2592000000;
+    const filtered = entries.filter(e => now - new Date(e.date) <= monthMS);
+    const days = [...new Set(filtered.map(e => new Date(e.date).toLocaleDateString()))];
+    const inData = days.map(d => filtered.filter(e => new Date(e.date).toLocaleDateString() === d && e.type==='In').reduce((s,e)=>s+e.quantity,0));
+    const outData = days.map(d => filtered.filter(e => new Date(e.date).toLocaleDateString() === d && e.type==='Out').reduce((s,e)=>s+e.quantity,0));
+    chart = new Chart(ctx, {
+      type: 'bar',
+      data: { labels: days, datasets: [
+        { label: 'In', data: inData, backgroundColor: '#38a169' },
+        { label: 'Out', data: outData, backgroundColor: '#e53e3e' }
+      ]},
+      options: { scales: { x: { stacked: true }, y: { beginAtZero: true }}, responsive:true }
+    });
+    applyChartTheme();
+  }
+
+  function applyChartTheme() {
+    if (!chart) return;
+    const isDark = document.body.classList.contains('dark-mode');
+    chart.options.plugins = { legend: { labels: { color: isDark? '#e2e8f0' : '#2d3748' }}};
+    chart.options.scales = {
+      x: { ticks: { color: isDark? '#e2e8f0' : '#2d3748' } },
+      y: { ticks: { color: isDark? '#e2e8f0' : '#2d3748' } }
+    };
+    chart.update();
+  }
+
+  /* === Event Handlers === */
+  function addRolls() {
+    const qty = parseInt(document.getElementById('quantity').value);
+    const person = document.getElementById('personName').value.trim();
+    if (!qty || !person) { alert('Please enter both a valid quantity and name.'); return; }
+    currentStock += qty;
+    logEntry('In', qty, person);
+    playAddAnimation(qty);
+  }
+
+  function removeRolls() {
+    const qty = parseInt(document.getElementById('quantity').value);
+    const person = document.getElementById('personName').value.trim();
+    if (!qty || !person) { alert('Please enter both a valid quantity and name.'); return; }
+    if (qty > currentStock) { alert('Cannot remove more rolls than in stock.'); return; }
+    currentStock -= qty;
+    logEntry('Out', qty, person);
+    playRemoveAnimation(qty);
+  }
+
+  function logEntry(type, quantity, person) {
+    const entry = {
+      date: new Date(),
+      type, quantity, person,
+      balance: currentStock
+    };
+    entries.push(entry);
+    saveData();
+    document.getElementById('quantity').value = '';
+    document.getElementById('personName').value = '';
+    updateStockDisplay();
+    updateTable(document.getElementById('search').value);
+    updateReports();
+    if (chart) chart.destroy();
+    document.getElementById('chartSection').classList.remove('show');
+  }
+
+  function playAddAnimation(count) {
+    const container = document.getElementById('animationContainer');
+    for (let i = 0; i < count; i++) {
+      const roll = document.createElement('div');
+      roll.classList.add('toilet-roll');
+      container.appendChild(roll);
+      setTimeout(() => roll.remove(), 1000);
+    }
+  }
+
+  function playRemoveAnimation(count) {
+    const container = document.getElementById('animationContainer');
+    for (let i = 0; i < count; i++) {
+      const roll = document.createElement('div');
+      roll.classList.add('toilet-roll');
+      container.appendChild(roll);
+      setTimeout(() => roll.remove(), 1000);
+    }
+  }
+
+  function resetAllData() {
+    if (confirm('Are you sure you want to delete ALL data? This cannot be undone.')) {
+      entries = [];
+      currentStock = 0;
+      saveData();
+      updateStockDisplay();
+      updateTable('');
+      updateReports();
+      if (chart) { chart.destroy(); chart=null; }
+      document.getElementById('chartSection').classList.remove('show');
+      alert('All data has been reset.');
+    }
+  }
+
+  function toggleStats() {
+    document.getElementById('statsSection').classList.toggle('show');
+  }
+
+  function toggleChart() {
+    const sec = document.getElementById('chartSection');
+    sec.classList.toggle('show');
+    if (sec.classList.contains('show') && !chart) initChart();
+  }
+
+  function toggleDarkMode() {
+    document.body.classList.toggle('dark-mode');
+    localStorage.setItem('darkMode', document.body.classList.contains('dark-mode'));
+    applyChartTheme();
+  }
+
+  document.getElementById('search').addEventListener('input', e => updateTable(e.target.value));
+
+  /* === Initialization === */
+  window.onload = async () => {
+    if (localStorage.getItem('darkMode') === 'true') document.body.classList.add('dark-mode');
+    await fetchData();
+    updateStockDisplay();
+    updateTable('');
+    updateReports();
+  };
+</script>
+</body>
+</html>
