@@ -232,6 +232,8 @@
         <option value="sw">Saniwipes</option>
         <option value="fap">First Aid Plasters</option>
         <option value="fam">First Aid Masks</option>
+        <option value="dhs">Deep Heat Spray</option>
+        <option value="fab">First Aid Bandage</option>
       </select>
     </div>
     <div class="item">
@@ -252,6 +254,8 @@
       <div>Saniwipes: <span id="swStock">0</span></div>
       <div>First Aid Plasters: <span id="fapStock">0</span></div>
       <div>First Aid Masks: <span id="famStock">0</span></div>
+      <div>Deep Heat Spray: <span id="dhsStock">0</span></div>
+      <div>First Aid Bandage: <span id="fabStock">0</span></div>
     </div>
   </div>
   <div class="stats-section">
@@ -285,7 +289,9 @@
     tp: { name: 'Toilet Paper', stock: 0, in: 0, out: 0 },
     sw: { name: 'Saniwipes', stock: 0, in: 0, out: 0 },
     fap: { name: 'First Aid Plasters', stock: 0, in: 0, out: 0 },
-    fam: { name: 'First Aid Masks', stock: 0, in: 0, out: 0 }
+    fam: { name: 'First Aid Masks', stock: 0, in: 0, out: 0 },
+    dhs: { name: 'Deep Heat Spray', stock: 0, in: 0, out: 0 }, // New item
+    fab: { name: 'First Aid Bandage', stock: 0, in: 0, out: 0 }  // New item
   };
   let transactionLog = [];
 
@@ -294,7 +300,9 @@
     tp: 'tpStock',
     sw: 'swStock',
     fap: 'fapStock',
-    fam: 'famStock'
+    fam: 'famStock',
+    dhs: 'dhsStock', // New item display ID
+    fab: 'fabStock'  // New item display ID
   };
 
   // Load data from JSON Bin (and fallback to localStorage)
@@ -319,7 +327,23 @@
     .then(data => {
         if (data && data.record) { // JSONBin.io wraps the actual data in a 'record' field
             // Reassign items and transactionLog to the loaded data
-            items = data.record.inventory;
+            // Merge existing items with new items from loaded data
+            for (const key in data.record.inventory) {
+                if (items[key]) { // If item exists in default, update its values
+                    items[key] = data.record.inventory[key];
+                } else { // If it's a new item from loaded data, add it
+                    items[key] = data.record.inventory[key];
+                }
+            }
+            // Ensure any new items introduced in the code are present if not in loaded data
+            // (e.g., if you add new items in the HTML but they haven't been saved yet)
+            for (const key in items) {
+                if (!data.record.inventory[key]) {
+                    // Item exists in `items` but not in loaded data, initialize it
+                    items[key] = items[key]; // Re-initializes with default values set in `items` declaration
+                }
+            }
+
             transactionLog = data.record.transactionLog;
             console.log('Data successfully loaded from JSON bin.');
         } else {
@@ -339,6 +363,12 @@
                 const savedItems = JSON.parse(saved);
                  for (const key in items) {
                     if (savedItems[key]) {
+                        items[key] = savedItems[key];
+                    }
+                }
+                // Also add any new items from savedItems that might not be in current `items` structure
+                for (const key in savedItems) {
+                    if (!items[key]) {
                         items[key] = savedItems[key];
                     }
                 }
@@ -438,12 +468,14 @@
   }
 
   function initializeDefaults() {
-    // Initial data based on user's provided snapshot
+    // Initial data based on user's provided snapshot, with new items initialized to 0
     items = { // Reassigning the entire object, hence 'let' is needed
       tp: { name: 'Toilet Paper', stock: 6, in: 205, out: 199 },
       sw: { name: 'Saniwipes', stock: 7, in: 12, out: 5 },
       fap: { name: 'First Aid Plasters', stock: 91, in: 103, out: 12 },
-      fam: { name: 'First Aid Masks', stock: 95, in: 98, out: 3 }
+      fam: { name: 'First Aid Masks', stock: 95, in: 98, out: 3 },
+      dhs: { name: 'Deep Heat Spray', stock: 0, in: 0, out: 0 }, // New item defaults
+      fab: { name: 'First Aid Bandage', stock: 0, in: 0, out: 0 }  // New item defaults
     };
 
     // New structured transaction log entries with ISO timestamps
@@ -463,7 +495,13 @@
 
   function updateDisplay() {
     for (const key in items) {
-      document.getElementById(stockDisplayIds[key]).textContent = items[key].stock;
+      // Ensure the display element exists before trying to update it
+      const element = document.getElementById(stockDisplayIds[key]);
+      if (element) {
+        element.textContent = items[key].stock;
+      } else {
+        console.warn(`Display element for itemKey: ${key} not found.`);
+      }
     }
   }
 
@@ -505,7 +543,9 @@
         const formattedDate = date.toLocaleDateString('en-GB', {day: '2-digit', month: '2-digit', year: 'numeric'});
         const formattedTime = date.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit', second: '2-digit'});
         const actionText = entry.type === 'add' ? 'Added' : 'Taken';
-        html += `<div class="log-entry">[${formattedDate}, ${formattedTime}] ${actionText} ${entry.quantity} of ${items[entry.itemKey].name} by ${entry.person}.</div>`;
+        // Ensure that items[entry.itemKey] exists before accessing .name
+        const itemName = items[entry.itemKey] ? items[entry.itemKey].name : entry.itemKey;
+        html += `<div class="log-entry">[${formattedDate}, ${formattedTime}] ${actionText} ${entry.quantity} of ${itemName} by ${entry.person}.</div>`;
     }
     logDiv.innerHTML = html;
   }
@@ -513,10 +553,12 @@
   // Function to apply and remove highlight
   function applyHighlight(itemKey) {
     const stockElement = document.getElementById(stockDisplayIds[itemKey]);
-    stockElement.classList.add('stock-highlight');
-    setTimeout(() => {
-      stockElement.classList.remove('stock-highlight');
-    }, 1000); // Highlight for 1 second
+    if (stockElement) {
+        stockElement.classList.add('stock-highlight');
+        setTimeout(() => {
+            stockElement.classList.remove('stock-highlight');
+        }, 1000); // Highlight for 1 second
+    }
   }
 
   // Add stock function
@@ -733,7 +775,9 @@
       if (entry.type !== 'reset') { // Exclude reset entries from detailed log export
         const date = new Date(entry.timestamp);
         const formattedDate = date.toLocaleString('en-GB', {day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit'});
-        csvContent += `"${formattedDate}","${entry.type}","${items[entry.itemKey].name}",${entry.quantity},"${entry.person}"\n`;
+        // Ensure that items[entry.itemKey] exists before accessing .name
+        const itemName = items[entry.itemKey] ? items[entry.itemKey].name : entry.itemKey;
+        csvContent += `"${formattedDate}","${entry.type}","${itemName}",${entry.quantity},"${entry.person}"\n`;
       }
     });
 
@@ -805,7 +849,8 @@
             return [`${formattedDate}`, `Stats and stock reset by ${entry.person}.`];
         }
         const actionText = entry.type === 'add' ? 'Added' : 'Taken';
-        return [`${formattedDate}`, `${actionText} ${entry.quantity} of ${items[entry.itemKey].name} by ${entry.person}.`];
+        const itemName = items[entry.itemKey] ? items[entry.itemKey].name : entry.itemKey;
+        return [`${formattedDate}`, `${actionText} ${entry.quantity} of ${itemName} by ${entry.person}.`];
     });
     doc.autoTable({
       startY: y,
@@ -829,7 +874,6 @@
     document.getElementById('addBtn').addEventListener('click', addStock);
     document.getElementById('takeBtn').addEventListener('click', takeStock);
     document.getElementById('resetBtn').addEventListener('click', resetStats);
-    // Removed loadDefaultsBtn event listener as the button is removed
     document.getElementById('exportCsvBtn').addEventListener('click', exportToCsv);
     document.getElementById('exportPdfBtn').addEventListener('click', exportToPdf);
   });
