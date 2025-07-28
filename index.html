@@ -110,10 +110,27 @@
   button.reset:hover {
     background: #c0392b;
   }
+  .export-buttons {
+    margin-top: 20px;
+    display: flex;
+    gap: 10px;
+  }
+  .export-buttons button {
+    flex: 1;
+    background: #3498db;
+  }
+  .export-buttons button:hover {
+    background: #2980b9;
+  }
   .current-stocks div {
     font-size: 1.1rem;
     color: var(--text-color);
     margin: 8px 0;
+  }
+  /* New style for visual confirmation */
+  .stock-highlight {
+    background-color: #d4edda; /* Light green */
+    transition: background-color 0.5s ease-out;
   }
   #stats {
     margin-top: 20px;
@@ -165,6 +182,16 @@
     font-size: 1rem;
     color: var(--text-color);
   }
+  .report-summary {
+    font-size: 1rem;
+    margin-bottom: 5px;
+    color: var(--text-color);
+  }
+  .report-summary-item {
+    margin-left: 20px;
+    font-size: 0.95rem;
+    color: #555;
+  }
   @media (max-width: 600px) {
     .item {
       flex-direction: column;
@@ -177,8 +204,13 @@
     .item label {
       width: 100%;
     }
+    .export-buttons {
+      flex-direction: column;
+    }
   }
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.0/jspdf.plugin.autotable.min.js"></script>
 </head>
 <body>
 <h1>Reception Stock Inventory</h1>
@@ -217,8 +249,13 @@
   <div class="stats-section">
     <h2>Stats Report</h2>
     <button class="reset" id="resetBtn">Reset Stats</button>
+    <button id="loadDefaultsBtn">Load Default Stock</button>
+    <div class="export-buttons">
+      <button id="exportCsvBtn">Export to CSV</button>
+      <button id="exportPdfBtn">Export to PDF</button>
+    </div>
     <div id="stats"></div>
-    <h3>Transaction Log</h3>
+    <h3>Transaction Log (Last 10 Entries)</h3>
     <div id="log"></div>
     <div class="report-section">
       <h3>Daily Report</h3>
@@ -240,6 +277,14 @@
   };
   let transactionLog = [];
 
+  // Map item keys to their respective stock display IDs
+  const stockDisplayIds = {
+    tp: 'tpStock',
+    sw: 'swStock',
+    fap: 'fapStock',
+    fam: 'famStock'
+  };
+
   // Load data from localStorage or initialize defaults
   function loadData() {
     const saved = localStorage.getItem('inventory');
@@ -255,12 +300,44 @@
         console.error('Error parsing inventory from localStorage:', e);
       }
     } else {
-      initializeDefaults();
+      initializeDefaults(); // This is only called if 'inventory' is NOT in localStorage
     }
     const savedLog = localStorage.getItem('transactionLog');
     if (savedLog) {
       try {
-        transactionLog = JSON.parse(savedLog);
+        // Attempt to parse old string format or new object format
+        const parsedLog = JSON.parse(savedLog);
+        if (parsedLog.length > 0 && typeof parsedLog[0] === 'string') {
+          // It's the old string format, convert to new format
+          transactionLog = parsedLog.map(entry => {
+            const match = entry.match(/\[(\d{2}\/\d{2}\/\d{4}), (\d{2}:\d{2}:\d{2})\] (Added|Taken) (\d+) of (.*) by (.*)\./);
+            if (match) {
+              const [day, month, year] = match[1].split('/').map(Number);
+              const [hours, minutes, seconds] = match[2].split(':').map(Number);
+              const date = new Date(year, month - 1, day, hours, minutes, seconds);
+              const itemFullName = match[5];
+              let itemKey = '';
+              for (const key in items) {
+                  if (items[key].name === itemFullName) {
+                      itemKey = key;
+                      break;
+                  }
+              }
+              return {
+                timestamp: date.toISOString(),
+                type: match[3].toLowerCase(), // 'added' -> 'add', 'taken' -> 'take'
+                itemKey: itemKey,
+                quantity: Number(match[4]),
+                person: match[6]
+              };
+            }
+            return null; // Handle malformed entries
+          }).filter(entry => entry !== null);
+          saveData(); // Save the converted log
+        } else {
+          // Assume it's already the new object format
+          transactionLog = parsedLog;
+        }
       } catch (e) {
         console.error('Error parsing transactionLog:', e);
         transactionLog = [];
@@ -270,27 +347,37 @@
     }
   }
 
-  function initializeDefaults() {
-    items.tp = { name: 'Toilet Paper', stock: 100, in: 100, out: 0 };
-    items.sw = { name: 'Saniwipes', stock: 50, in: 50, out: 0 };
-    items.fap = { name: 'First Aid Plasters', stock: 200, in: 200, out: 0 };
-    items.fam = { name: 'First Aid Masks', stock: 75, in: 75, out: 0 };
-    transactionLog = [
-      "System initialized with default stock on " + new Date().toLocaleString()
-    ];
-    saveData();
-  }
-
   function saveData() {
     localStorage.setItem('inventory', JSON.stringify(items));
     localStorage.setItem('transactionLog', JSON.stringify(transactionLog));
   }
 
+  function initializeDefaults() {
+    // Initial data based on user's provided snapshot
+    items.tp = { name: 'Toilet Paper', stock: 6, in: 205, out: 199 };
+    items.sw = { name: 'Saniwipes', stock: 7, in: 12, out: 5 };
+    items.fap = { name: 'First Aid Plasters', stock: 91, in: 103, out: 12 };
+    items.fam = { name: 'First Aid Masks', stock: 95, in: 98, out: 3 };
+
+    // New structured transaction log entries with ISO timestamps
+    transactionLog = [
+      { timestamp: "2025-07-27T09:50:08.000Z", type: "take", itemKey: "tp", quantity: 12, person: "Jabu" },
+      { timestamp: "2025-07-27T08:07:41.000Z", type: "take", itemKey: "tp", quantity: 12, person: "Bongiwe" },
+      { timestamp: "2025-07-27T07:56:10.000Z", type: "take", itemKey: "fap", quantity: 2, person: "Noxolom" },
+      { timestamp: "2025-07-26T15:07:50.000Z", type: "take", itemKey: "sw", quantity: 1, person: "Khanyisile" },
+      { timestamp: "2025-07-26T12:54:21.000Z", type: "take", itemKey: "fap", quantity: 2, person: "MM2" },
+      { timestamp: "2025-07-26T12:26:43.000Z", type: "take", itemKey: "fap", quantity: 2, person: "MM2" },
+      { timestamp: "2025-07-26T12:26:22.000Z", type: "take", itemKey: "tp", quantity: 6, person: "Bongiwe" },
+      { timestamp: "2025-07-26T08:34:59.000Z", type: "take", itemKey: "fam", quantity: 1, person: "PnS merchandiser" },
+      { timestamp: "2025-07-26T08:13:14.000Z", type: "take", itemKey: "tp", quantity: 12, person: "Bongiwe" },
+      { timestamp: "2025-07-26T07:46:48.000Z", type: "take", itemKey: "tp", quantity: 6, person: "Abigail" }
+    ];
+  }
+
   function updateDisplay() {
-    document.getElementById('tpStock').textContent = items.tp.stock;
-    document.getElementById('swStock').textContent = items.sw.stock;
-    document.getElementById('fapStock').textContent = items.fap.stock;
-    document.getElementById('famStock').textContent = items.fam.stock;
+    for (const key in items) {
+      document.getElementById(stockDisplayIds[key]).textContent = items[key].stock;
+    }
   }
 
   function updateStats() {
@@ -318,9 +405,22 @@
     // Show latest 10 logs
     const recentLogs = transactionLog.slice(-10).reverse();
     for (const entry of recentLogs) {
-      html += `<div class="log-entry">${entry}</div>`;
+        const date = new Date(entry.timestamp);
+        const formattedDate = date.toLocaleDateString('en-GB', {day: '2-digit', month: '2-digit', year: 'numeric'});
+        const formattedTime = date.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit', second: '2-digit'});
+        const actionText = entry.type === 'add' ? 'Added' : 'Taken';
+        html += `<div class="log-entry">[${formattedDate}, ${formattedTime}] ${actionText} ${entry.quantity} of ${items[entry.itemKey].name} by ${entry.person}.</div>`;
     }
     logDiv.innerHTML = html;
+  }
+
+  // Function to apply and remove highlight
+  function applyHighlight(itemKey) {
+    const stockElement = document.getElementById(stockDisplayIds[itemKey]);
+    stockElement.classList.add('stock-highlight');
+    setTimeout(() => {
+      stockElement.classList.remove('stock-highlight');
+    }, 1000); // Highlight for 1 second
   }
 
   // Add stock function
@@ -340,13 +440,19 @@
     }
     items[itemKey].stock += qty;
     items[itemKey].in += qty;
-    const logEntry = `[${new Date().toLocaleString()}] Added ${qty} of ${items[itemKey].name} by ${person}.`;
-    transactionLog.push(logEntry);
+    transactionLog.push({
+      timestamp: new Date().toISOString(),
+      type: "add",
+      itemKey: itemKey,
+      quantity: qty,
+      person: person
+    });
     saveData();
     updateDisplay();
     updateStats();
     updateLog();
     generateReports();
+    applyHighlight(itemKey); // Apply highlight
     qtyInput.value = '';
     personInput.value = '';
   }
@@ -372,13 +478,19 @@
     }
     items[itemKey].stock -= qty;
     items[itemKey].out += qty;
-    const logEntry = `[${new Date().toLocaleString()}] Taken ${qty} of ${items[itemKey].name} by ${person}.`;
-    transactionLog.push(logEntry);
+    transactionLog.push({
+      timestamp: new Date().toISOString(),
+      type: "take",
+      itemKey: itemKey,
+      quantity: qty,
+      person: person
+    });
     saveData();
     updateDisplay();
     updateStats();
     updateLog();
     generateReports();
+    applyHighlight(itemKey); // Apply highlight
     qtyInput.value = '';
     personInput.value = '';
   }
@@ -391,7 +503,13 @@
       items[key].in = 0;
       items[key].out = 0;
     }
-    transactionLog = [`[${new Date().toLocaleString()}] Stats and stock reset.`];
+    transactionLog = [{
+      timestamp: new Date().toISOString(),
+      type: "reset",
+      itemKey: "all",
+      quantity: 0,
+      person: "System"
+    }];
     saveData();
     updateDisplay();
     updateStats();
@@ -406,37 +524,71 @@
     updateMonthlyReport();
   }
 
+  // Helper function to aggregate transactions for a given period
+  function getAggregatedReport(filteredLogs) {
+    const reportData = {};
+    for (const key in items) {
+      reportData[key] = { in: 0, out: 0 };
+    }
+
+    filteredLogs.forEach(entry => {
+      if (entry.itemKey in reportData) {
+        if (entry.type === 'add') {
+          reportData[entry.itemKey].in += entry.quantity;
+        } else if (entry.type === 'take') {
+          reportData[entry.itemKey].out += entry.quantity;
+        }
+      }
+    });
+
+    let html = '';
+    let totalIn = 0;
+    let totalOut = 0;
+
+    for (const key in reportData) {
+      const item = items[key];
+      if (reportData[key].in > 0 || reportData[key].out > 0) {
+        html += `<div class="report-summary-item">${item.name}: Added ${reportData[key].in}, Taken ${reportData[key].out}</div>`;
+        totalIn += reportData[key].in;
+        totalOut += reportData[key].out;
+      }
+    }
+
+    if (html === '') {
+      return '<p>No transactions for this period.</p>';
+    }
+
+    return `<div class="report-summary">Total Added: ${totalIn}</div>
+            <div class="report-summary">Total Taken: ${totalOut}</div>` + html;
+  }
+
   // Update daily report
   function updateDailyReport() {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
+
     const dailyTransactions = transactionLog.filter(entry => {
-      if (typeof entry !== 'string') return false;
-      const match = entry.match(/\[(.*?)\]/);
-      if (!match) return false;
-      const entryDate = new Date(match[1]);
+      const entryDate = new Date(entry.timestamp);
       return entryDate >= today && entryDate < tomorrow;
     });
-    document.getElementById('dailyReport').innerHTML = dailyTransactions.join('<br>') || '<p>No transactions today.</p>';
+    document.getElementById('dailyReport').innerHTML = getAggregatedReport(dailyTransactions);
   }
 
   // Update weekly report
   function updateWeeklyReport() {
     const today = new Date();
-    const firstDayOfWeek = new Date(today.setDate(today.getDate() - today.getDay()));
+    const firstDayOfWeek = new Date(today.getFullYear(), today.getMonth(), today.getDate() - today.getDay()); // Sunday as first day
     firstDayOfWeek.setHours(0, 0, 0, 0);
     const lastDayOfWeek = new Date(firstDayOfWeek);
     lastDayOfWeek.setDate(lastDayOfWeek.getDate() + 7);
+
     const weeklyTransactions = transactionLog.filter(entry => {
-      if (typeof entry !== 'string') return false;
-      const match = entry.match(/\[(.*?)\]/);
-      if (!match) return false;
-      const entryDate = new Date(match[1]);
+      const entryDate = new Date(entry.timestamp);
       return entryDate >= firstDayOfWeek && entryDate < lastDayOfWeek;
     });
-    document.getElementById('weeklyReport').innerHTML = weeklyTransactions.join('<br>') || '<p>No transactions this week.</p>';
+    document.getElementById('weeklyReport').innerHTML = getAggregatedReport(weeklyTransactions);
   }
 
   // Update monthly report
@@ -446,14 +598,113 @@
     firstDayOfMonth.setHours(0, 0, 0, 0);
     const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
     lastDayOfMonth.setHours(0, 0, 0, 0);
+
     const monthlyTransactions = transactionLog.filter(entry => {
-      if (typeof entry !== 'string') return false;
-      const match = entry.match(/\[(.*?)\]/);
-      if (!match) return false;
-      const entryDate = new Date(match[1]);
+      const entryDate = new Date(entry.timestamp);
       return entryDate >= firstDayOfMonth && entryDate < lastDayOfMonth;
     });
-    document.getElementById('monthlyReport').innerHTML = monthlyTransactions.join('<br>') || '<p>No transactions this month.</p>';
+    document.getElementById('monthlyReport').innerHTML = getAggregatedReport(monthlyTransactions);
+  }
+
+  // Export to CSV
+  function exportToCsv() {
+    let csvContent = "data:text/csv;charset=utf-8,";
+    csvContent += "Item,Current Stock,Total In,Total Out\n";
+    for (const key in items) {
+      const item = items[key];
+      csvContent += `${item.name},${item.stock},${item.in},${item.out}\n`;
+    }
+
+    // Add transaction log
+    csvContent += "\n\nTransaction Log\n";
+    csvContent += "Timestamp,Type,Item,Quantity,Person\n";
+    transactionLog.forEach(entry => {
+      if (entry.type !== 'reset') { // Exclude reset entries from detailed log export
+        const date = new Date(entry.timestamp);
+        const formattedDate = date.toLocaleDateString('en-GB', {day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit'});
+        csvContent += `"${formattedDate}","${entry.type}","${items[entry.itemKey].name}",${entry.quantity},"${entry.person}"\n`;
+      }
+    });
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "inventory_report.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+
+  // Export to PDF
+  function exportToPdf() {
+    // Ensure jsPDF and autoTable are available
+    if (typeof window.jspdf === 'undefined' || typeof window.jspdf.AcroForm === 'undefined') {
+        alert("jsPDF library not loaded. Please check your internet connection or script paths.");
+        return;
+    }
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+
+    // Check if autoTable function is available
+    if (typeof doc.autoTable !== 'function') {
+        alert("jsPDF AutoTable plugin not loaded. Please ensure jspdf.plugin.autotable.min.js is included.");
+        return;
+    }
+
+
+    let y = 10;
+    doc.setFontSize(18);
+    doc.text("Reception Stock Inventory Report", 10, y);
+    y += 10;
+
+    doc.setFontSize(14);
+    doc.text("Current Stock Levels:", 10, y);
+    y += 10;
+
+    // Add stock table to PDF
+    const stockTableData = Object.values(items).map(item => [item.name, item.stock, item.in, item.out]);
+    doc.autoTable({
+      startY: y,
+      head: [['Item', 'Current Stock', 'Total In', 'Total Out']],
+      body: stockTableData,
+      theme: 'grid',
+      styles: { fontSize: 10, cellPadding: 2, overflow: 'linebreak' },
+      columnStyles: {
+        0: { cellWidth: 40 },
+        1: { cellWidth: 30 },
+        2: { cellWidth: 30 },
+        3: { cellWidth: 30 },
+      },
+      didDrawPage: function(data) {
+        y = data.cursor.y + 10;
+      }
+    });
+
+    y = doc.autoTable.previous.finalY + 20;
+    doc.setFontSize(14);
+    doc.text("Transaction Log (Last 10 Entries):", 10, y);
+    y += 10;
+
+    // Add transaction log to PDF
+    const logTableData = transactionLog.slice(-10).reverse().map(entry => {
+        const date = new Date(entry.timestamp);
+        const formattedDate = date.toLocaleDateString('en-GB', {day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit'});
+        const actionText = entry.type === 'add' ? 'Added' : 'Taken';
+        return [`${formattedDate}`, `${actionText} ${entry.quantity} of ${items[entry.itemKey].name} by ${entry.person}.`];
+    });
+    doc.autoTable({
+      startY: y,
+      head: [['Timestamp', 'Description']],
+      body: logTableData,
+      theme: 'grid',
+      styles: { fontSize: 8, cellPadding: 1, overflow: 'linebreak' },
+      columnStyles: {
+        0: { cellWidth: 50 },
+        1: { cellWidth: 'auto' },
+      }
+    });
+
+    doc.save("inventory_report.pdf");
   }
 
   // Attach event listeners on DOMContentLoaded
@@ -466,6 +717,16 @@
     document.getElementById('addBtn').addEventListener('click', addStock);
     document.getElementById('takeBtn').addEventListener('click', takeStock);
     document.getElementById('resetBtn').addEventListener('click', resetStats);
+    document.getElementById('loadDefaultsBtn').addEventListener('click', () => { // New event listener for Load Default Stock
+        initializeDefaults();
+        saveData();
+        updateDisplay();
+        updateStats();
+        updateLog();
+        generateReports();
+    });
+    document.getElementById('exportCsvBtn').addEventListener('click', exportToCsv);
+    document.getElementById('exportPdfBtn').addEventListener('click', exportToPdf);
   });
 </script>
 </body>
