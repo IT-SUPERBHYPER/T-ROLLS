@@ -172,6 +172,14 @@
     border-radius: 6px;
     border-left: 4px solid var(--accent-color);
   }
+  /* Add scrollbar to log display if it gets too long */
+  #log {
+    max-height: 400px; /* Adjust as needed */
+    overflow-y: auto;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 10px;
+  }
   .report-section {
     margin-top: 20px;
   }
@@ -249,13 +257,12 @@
   <div class="stats-section">
     <h2>Stats Report</h2>
     <button class="reset" id="resetBtn">Reset Stats</button>
-    <button id="loadDefaultsBtn">Load Default Stock</button>
     <div class="export-buttons">
       <button id="exportCsvBtn">Export to CSV</button>
       <button id="exportPdfBtn">Export to PDF</button>
     </div>
     <div id="stats"></div>
-    <h3>Transaction Log (Last 10 Entries)</h3>
+    <h3>Transaction Log (Full History)</h3>
     <div id="log"></div>
     <div class="report-section">
       <h3>Daily Report</h3>
@@ -268,8 +275,13 @@
   </div>
 </div>
 <script>
-  // Inventory items with initial values
-  const items = {
+  // JSON Bin API Configuration
+  const JSON_BIN_API_URL = 'https://api.jsonbin.io/v3/b/68872a55ae596e708fbcdef8';
+  const JSON_BIN_API_KEY = '$2a$10$BqM/s2f2kqZGoB5V14WtWOPOVO5/ccx/wZtBqmQsgeQqh6WMp42We';
+  const RESET_PASSWORD = 'Superb@123'; // Define the password for reset
+
+  // Inventory items with initial values - CHANGED TO LET
+  let items = {
     tp: { name: 'Toilet Paper', stock: 0, in: 0, out: 0 },
     sw: { name: 'Saniwipes', stock: 0, in: 0, out: 0 },
     fap: { name: 'First Aid Plasters', stock: 0, in: 0, out: 0 },
@@ -285,82 +297,157 @@
     fam: 'famStock'
   };
 
-  // Load data from localStorage or initialize defaults
+  // Load data from JSON Bin (and fallback to localStorage)
   function loadData() {
-    const saved = localStorage.getItem('inventory');
-    if (saved) {
-      try {
-        const savedItems = JSON.parse(saved);
-        for (const key in items) {
-          if (savedItems[key]) {
-            items[key] = savedItems[key];
-          }
+    fetch(JSON_BIN_API_URL, {
+        method: 'GET',
+        headers: {
+            'X-Master-Key': JSON_BIN_API_KEY // JSONBin.io uses X-Master-Key for both read/write with Master Key
         }
-      } catch (e) {
-        console.error('Error parsing inventory from localStorage:', e);
-      }
-    } else {
-      initializeDefaults(); // This is only called if 'inventory' is NOT in localStorage
-    }
-    const savedLog = localStorage.getItem('transactionLog');
-    if (savedLog) {
-      try {
-        // Attempt to parse old string format or new object format
-        const parsedLog = JSON.parse(savedLog);
-        if (parsedLog.length > 0 && typeof parsedLog[0] === 'string') {
-          // It's the old string format, convert to new format
-          transactionLog = parsedLog.map(entry => {
-            const match = entry.match(/\[(\d{2}\/\d{2}\/\d{4}), (\d{2}:\d{2}:\d{2})\] (Added|Taken) (\d+) of (.*) by (.*)\./);
-            if (match) {
-              const [day, month, year] = match[1].split('/').map(Number);
-              const [hours, minutes, seconds] = match[2].split(':').map(Number);
-              const date = new Date(year, month - 1, day, hours, minutes, seconds);
-              const itemFullName = match[5];
-              let itemKey = '';
-              for (const key in items) {
-                  if (items[key].name === itemFullName) {
-                      itemKey = key;
-                      break;
-                  }
-              }
-              return {
-                timestamp: date.toISOString(),
-                type: match[3].toLowerCase(), // 'added' -> 'add', 'taken' -> 'take'
-                itemKey: itemKey,
-                quantity: Number(match[4]),
-                person: match[6]
-              };
+    })
+    .then(response => {
+        if (!response.ok) {
+            if (response.status === 404) {
+                console.warn('JSON Bin not found (404), likely empty or first load. Initializing defaults.');
+                initializeDefaults(); // Load defaults if bin doesn't exist
+                return null; // Prevent further processing for 404
             }
-            return null; // Handle malformed entries
-          }).filter(entry => entry !== null);
-          saveData(); // Save the converted log
-        } else {
-          // Assume it's already the new object format
-          transactionLog = parsedLog;
+            throw new Error(`HTTP error! status: ${response.status}`);
         }
-      } catch (e) {
-        console.error('Error parsing transactionLog:', e);
-        transactionLog = [];
-      }
-    } else {
-      transactionLog = [];
-    }
+        return response.json();
+    })
+    .then(data => {
+        if (data && data.record) { // JSONBin.io wraps the actual data in a 'record' field
+            // Reassign items and transactionLog to the loaded data
+            items = data.record.inventory;
+            transactionLog = data.record.transactionLog;
+            console.log('Data successfully loaded from JSON bin.');
+        } else {
+             // If data is null (e.g., 404 handled above) or unexpected structure, initialize defaults
+             console.log("No valid data fetched from JSON bin. Displaying initialized defaults.");
+             initializeDefaults(); // Ensure defaults are loaded if bin is empty/malformed
+        }
+    })
+    .catch(error => {
+        console.error('Error loading data from JSON bin:', error);
+        alert('Failed to load data from cloud. Attempting to load from local storage or defaults.');
+        // Fallback to localStorage if cloud load fails
+        const saved = localStorage.getItem('inventory');
+        if (saved) {
+            try {
+                // Ensure items object structure is preserved even from old localStorage
+                const savedItems = JSON.parse(saved);
+                 for (const key in items) {
+                    if (savedItems[key]) {
+                        items[key] = savedItems[key];
+                    }
+                }
+            } catch (e) {
+                console.error('Error parsing inventory from localStorage fallback:', e);
+            }
+        }
+        const savedLog = localStorage.getItem('transactionLog');
+        if (savedLog) {
+            try {
+                // Attempt to parse old string format or new object format from localStorage
+                const parsedLog = JSON.parse(savedLog);
+                if (parsedLog.length > 0 && typeof parsedLog[0] === 'string') {
+                    // It's the old string format, convert to new format if it exists
+                    transactionLog = parsedLog.map(entry => {
+                        const match = entry.match(/\[(\d{2}\/\d{2}\/\d{4}), (\d{2}:\d{2}:\d{2})\] (Added|Taken) (\d+) of (.*) by (.*)\./);
+                        if (match) {
+                            const [day, month, year] = match[1].split('/').map(Number);
+                            const [hours, minutes, seconds] = match[2].split(':').map(Number);
+                            const date = new Date(year, month - 1, day, hours, minutes, seconds);
+                            const itemFullName = match[5];
+                            let itemKey = '';
+                            for (const key in items) {
+                                if (items[key].name === itemFullName) {
+                                    itemKey = key;
+                                    break;
+                                }
+                            }
+                            return {
+                                timestamp: date.toISOString(),
+                                type: match[3].toLowerCase(), // 'added' -> 'add', 'taken' -> 'take'
+                                itemKey: itemKey,
+                                quantity: Number(match[4]),
+                                person: match[6]
+                            };
+                        }
+                        return null; // Handle malformed entries
+                    }).filter(entry => entry !== null);
+                } else {
+                    // Assume it's already the new object format
+                    transactionLog = parsedLog;
+                }
+            } catch (e) {
+                console.error('Error parsing transactionLog from localStorage fallback:', e);
+                transactionLog = [];
+            }
+        }
+
+        if (!saved && !savedLog && transactionLog.length === 0) { // If no data anywhere, initialize defaults
+            initializeDefaults();
+        }
+    })
+    .finally(() => { // Ensure display is updated regardless of load success
+        updateDisplay();
+        updateStats();
+        updateLog();
+        generateReports();
+    });
   }
 
+  // Save data to JSON Bin (and fallback to localStorage)
   function saveData() {
-    localStorage.setItem('inventory', JSON.stringify(items));
-    localStorage.setItem('transactionLog', JSON.stringify(transactionLog));
+    const dataToSave = {
+        inventory: items,
+        transactionLog: transactionLog
+    };
+
+    fetch(JSON_BIN_API_URL, {
+        method: 'PUT', // Use PUT to update the existing bin
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Master-Key': JSON_BIN_API_KEY,
+            'X-Bin-Meta': 'false' // For JSONBin.io, to return only the data in the response
+        },
+        body: JSON.stringify(dataToSave)
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response.json();
+    })
+    .then(data => {
+        console.log('Data successfully saved to JSON bin:', data);
+        // No longer saving to localStorage as primary, but keep it as a potential fallback
+        // localStorage.setItem('inventory', JSON.stringify(items));
+        // localStorage.setItem('transactionLog', JSON.stringify(transactionLog));
+    })
+    .catch(error => {
+        console.error('Error saving data to JSON bin:', error);
+        alert('Failed to save data to cloud. Saving to local storage as a fallback.');
+        // Fallback to localStorage if cloud save fails
+        localStorage.setItem('inventory', JSON.stringify(items));
+        localStorage.setItem('transactionLog', JSON.stringify(transactionLog));
+        console.log("Data saved to localStorage as a fallback.");
+    });
   }
 
   function initializeDefaults() {
     // Initial data based on user's provided snapshot
-    items.tp = { name: 'Toilet Paper', stock: 6, in: 205, out: 199 };
-    items.sw = { name: 'Saniwipes', stock: 7, in: 12, out: 5 };
-    items.fap = { name: 'First Aid Plasters', stock: 91, in: 103, out: 12 };
-    items.fam = { name: 'First Aid Masks', stock: 95, in: 98, out: 3 };
+    items = { // Reassigning the entire object, hence 'let' is needed
+      tp: { name: 'Toilet Paper', stock: 6, in: 205, out: 199 },
+      sw: { name: 'Saniwipes', stock: 7, in: 12, out: 5 },
+      fap: { name: 'First Aid Plasters', stock: 91, in: 103, out: 12 },
+      fam: { name: 'First Aid Masks', stock: 95, in: 98, out: 3 }
+    };
 
     // New structured transaction log entries with ISO timestamps
-    transactionLog = [
+    transactionLog = [ // Reassigning the entire array, hence 'let' is needed
       { timestamp: "2025-07-27T09:50:08.000Z", type: "take", itemKey: "tp", quantity: 12, person: "Jabu" },
       { timestamp: "2025-07-27T08:07:41.000Z", type: "take", itemKey: "tp", quantity: 12, person: "Bongiwe" },
       { timestamp: "2025-07-27T07:56:10.000Z", type: "take", itemKey: "fap", quantity: 2, person: "Noxolom" },
@@ -402,9 +489,18 @@
       return;
     }
     let html = '';
-    // Show latest 10 logs
-    const recentLogs = transactionLog.slice(-10).reverse();
-    for (const entry of recentLogs) {
+    // Display ALL logs, reversed to show most recent first
+    const allLogsReversed = [...transactionLog].reverse(); // Create a shallow copy to reverse
+    for (const entry of allLogsReversed) {
+        // Ensure 'reset' type entries are not displayed as regular transactions
+        if (entry.type === 'reset') {
+            const date = new Date(entry.timestamp);
+            const formattedDate = date.toLocaleDateString('en-GB', {day: '2-digit', month: '2-digit', year: 'numeric'});
+            const formattedTime = date.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit', second: '2-digit'});
+            html += `<div class="log-entry">[${formattedDate}, ${formattedTime}] Stats and stock reset by ${entry.person}.</div>`;
+            continue;
+        }
+
         const date = new Date(entry.timestamp);
         const formattedDate = date.toLocaleDateString('en-GB', {day: '2-digit', month: '2-digit', year: 'numeric'});
         const formattedTime = date.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit', second: '2-digit'});
@@ -447,7 +543,7 @@
       quantity: qty,
       person: person
     });
-    saveData();
+    saveData(); // Save to JSON bin
     updateDisplay();
     updateStats();
     updateLog();
@@ -485,7 +581,7 @@
       quantity: qty,
       person: person
     });
-    saveData();
+    saveData(); // Save to JSON bin
     updateDisplay();
     updateStats();
     updateLog();
@@ -495,9 +591,21 @@
     personInput.value = '';
   }
 
-  // Reset function
+  // Reset function with password
   function resetStats() {
-    if (!confirm('Are you sure you want to reset all stats and logs? This cannot be undone.')) return;
+    const password = prompt('Please enter the password to reset stats:');
+    if (password === null) { // User clicked cancel
+        return;
+    }
+    if (password !== RESET_PASSWORD) {
+        alert('Incorrect password. Stats reset cancelled.');
+        return;
+    }
+
+    if (!confirm('Are you sure you want to reset all stats and logs? This cannot be undone.')) {
+        return;
+    }
+
     for (const key in items) {
       items[key].stock = 0;
       items[key].in = 0;
@@ -508,9 +616,9 @@
       type: "reset",
       itemKey: "all",
       quantity: 0,
-      person: "System"
+      person: "User (Password Reset)" // Updated person for clarity
     }];
-    saveData();
+    saveData(); // Save to JSON bin
     updateDisplay();
     updateStats();
     updateLog();
@@ -532,6 +640,9 @@
     }
 
     filteredLogs.forEach(entry => {
+      // Exclude 'reset' entries from aggregated reports
+      if (entry.type === 'reset') return;
+
       if (entry.itemKey in reportData) {
         if (entry.type === 'add') {
           reportData[entry.itemKey].in += entry.quantity;
@@ -621,7 +732,7 @@
     transactionLog.forEach(entry => {
       if (entry.type !== 'reset') { // Exclude reset entries from detailed log export
         const date = new Date(entry.timestamp);
-        const formattedDate = date.toLocaleDateString('en-GB', {day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit'});
+        const formattedDate = date.toLocaleString('en-GB', {day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit'});
         csvContent += `"${formattedDate}","${entry.type}","${items[entry.itemKey].name}",${entry.quantity},"${entry.person}"\n`;
       }
     });
@@ -682,13 +793,17 @@
 
     y = doc.autoTable.previous.finalY + 20;
     doc.setFontSize(14);
-    doc.text("Transaction Log (Last 10 Entries):", 10, y);
+    doc.text("Transaction Log (Full History):", 10, y);
     y += 10;
 
     // Add transaction log to PDF
-    const logTableData = transactionLog.slice(-10).reverse().map(entry => {
+    const logTableData = [...transactionLog].reverse().map(entry => { // Display all logs for PDF
         const date = new Date(entry.timestamp);
-        const formattedDate = date.toLocaleDateString('en-GB', {day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit'});
+        const formattedDate = date.toLocaleString('en-GB', {day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit'});
+        // Format reset entry differently for PDF if needed, or exclude.
+        if (entry.type === 'reset') {
+            return [`${formattedDate}`, `Stats and stock reset by ${entry.person}.`];
+        }
         const actionText = entry.type === 'add' ? 'Added' : 'Taken';
         return [`${formattedDate}`, `${actionText} ${entry.quantity} of ${items[entry.itemKey].name} by ${entry.person}.`];
     });
@@ -709,22 +824,12 @@
 
   // Attach event listeners on DOMContentLoaded
   document.addEventListener('DOMContentLoaded', () => {
-    loadData();
-    updateDisplay();
-    updateStats();
-    updateLog();
-    generateReports();
+    loadData(); // This will now attempt to load from JSON bin first
+
     document.getElementById('addBtn').addEventListener('click', addStock);
     document.getElementById('takeBtn').addEventListener('click', takeStock);
     document.getElementById('resetBtn').addEventListener('click', resetStats);
-    document.getElementById('loadDefaultsBtn').addEventListener('click', () => { // New event listener for Load Default Stock
-        initializeDefaults();
-        saveData();
-        updateDisplay();
-        updateStats();
-        updateLog();
-        generateReports();
-    });
+    // Removed loadDefaultsBtn event listener as the button is removed
     document.getElementById('exportCsvBtn').addEventListener('click', exportToCsv);
     document.getElementById('exportPdfBtn').addEventListener('click', exportToPdf);
   });
