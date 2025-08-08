@@ -173,12 +173,13 @@
     border-left: 4px solid var(--accent-color);
   }
   /* Add scrollbar to log display if it gets too long */
-  #log {
-    max-height: 400px; /* Adjust as needed */
+  .item-log-container {
+    max-height: 300px;
     overflow-y: auto;
     border: 1px solid var(--border-color);
     border-radius: 8px;
     padding: 10px;
+    margin-bottom: 20px;
   }
   .report-section {
     margin-top: 20px;
@@ -199,6 +200,14 @@
     margin-left: 20px;
     font-size: 0.95rem;
     color: #555;
+  }
+  .item-log-title {
+    font-size: 1.2rem;
+    font-weight: bold;
+    margin-bottom: 10px;
+    color: var(--primary-color);
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 5px;
   }
   @media (max-width: 600px) {
     .item {
@@ -266,7 +275,7 @@
       <button id="exportPdfBtn">Export to PDF</button>
     </div>
     <div id="stats"></div>
-    <h3>Transaction Log (Full History)</h3>
+    <h3>Transaction Log (By Item)</h3>
     <div id="log"></div>
     <div class="report-section">
       <h3>Daily Report</h3>
@@ -526,27 +535,47 @@
       logDiv.innerHTML = '<p>No transactions yet.</p>';
       return;
     }
+    
     let html = '';
-    // Display ALL logs, reversed to show most recent first
-    const allLogsReversed = [...transactionLog].reverse(); // Create a shallow copy to reverse
-    for (const entry of allLogsReversed) {
-        // Ensure 'reset' type entries are not displayed as regular transactions
-        if (entry.type === 'reset') {
-            const date = new Date(entry.timestamp);
-            const formattedDate = date.toLocaleDateString('en-GB', {day: '2-digit', month: '2-digit', year: 'numeric'});
-            const formattedTime = date.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit', second: '2-digit'});
-            html += `<div class="log-entry">[${formattedDate}, ${formattedTime}] Stats and stock reset by ${entry.person}.</div>`;
-            continue;
+    
+    // Create a log section for each item
+    for (const key in items) {
+      const item = items[key];
+      const itemLogs = transactionLog.filter(entry => entry.itemKey === key && entry.type !== 'reset');
+      
+      if (itemLogs.length > 0) {
+        html += `<div class="item-log-title">${item.name} Transactions</div>`;
+        html += '<div class="item-log-container">';
+        
+        // Display logs for this item, most recent first
+        const reversedLogs = [...itemLogs].reverse();
+        for (const entry of reversedLogs) {
+          const date = new Date(entry.timestamp);
+          const formattedDate = date.toLocaleDateString('en-GB', {day: '2-digit', month: '2-digit', year: 'numeric'});
+          const formattedTime = date.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit', second: '2-digit'});
+          const actionText = entry.type === 'add' ? 'Added' : 'Taken';
+          html += `<div class="log-entry">[${formattedDate}, ${formattedTime}] ${actionText} ${entry.quantity} by ${entry.person}.</div>`;
         }
-
+        
+        html += '</div>';
+      }
+    }
+    
+    // Handle reset entries separately
+    const resetEntries = transactionLog.filter(entry => entry.type === 'reset');
+    if (resetEntries.length > 0) {
+      html += '<div class="item-log-title">System Resets</div>';
+      html += '<div class="item-log-container">';
+      const reversedResets = [...resetEntries].reverse();
+      for (const entry of reversedResets) {
         const date = new Date(entry.timestamp);
         const formattedDate = date.toLocaleDateString('en-GB', {day: '2-digit', month: '2-digit', year: 'numeric'});
         const formattedTime = date.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit', second: '2-digit'});
-        const actionText = entry.type === 'add' ? 'Added' : 'Taken';
-        // Ensure that items[entry.itemKey] exists before accessing .name
-        const itemName = items[entry.itemKey] ? items[entry.itemKey].name : entry.itemKey;
-        html += `<div class="log-entry">[${formattedDate}, ${formattedTime}] ${actionText} ${entry.quantity} of ${itemName} by ${entry.person}.</div>`;
+        html += `<div class="log-entry">[${formattedDate}, ${formattedTime}] Stats and stock reset by ${entry.person}.</div>`;
+      }
+      html += '</div>';
     }
+    
     logDiv.innerHTML = html;
   }
 
