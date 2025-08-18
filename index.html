@@ -236,40 +236,30 @@
         <option value="fab">First Aid Bandage</option>
       </select>
     </div>
-    <div class="item">
-      <label for="quantityIn">Add Stock:</label>
-      <input type="number" id="quantityIn" min="0" placeholder="Quantity" />
-      <input type="text" id="personIn" placeholder="Person's Name" />
-      <button id="addBtn">Add</button>
-    </div>
-    <div class="item">
-      <label for="quantityOut">Take Stock:</label>
-      <input type="number" id="quantityOut" min="0" placeholder="Quantity" />
-      <input type="text" id="personOut" placeholder="Person's Name" />
 
-      <!-- Dropdown for Toilet Paper Area -->
-      <div id="toiletPurposeContainer" style="display: none; width: 200px;">
-        <select id="toiletArea">
-          <option value="">Select Area</option>
-          <option value="Prayer">Prayer</option>
-          <option value="Customer">Customer</option>
-          <option value="Team Members">Team Members</option>
-          <option value="Main Office">Main Office</option>
-        </select>
+    <!-- Add Stock (only shown for TP and SW) -->
+    <div id="addSection" style="display: none;">
+      <div class="item">
+        <label for="quantityIn">Add Stock:</label>
+        <input type="number" id="quantityIn" min="0" placeholder="Quantity" />
+        <input type="text" id="personIn" placeholder="Person's Name" />
+        <button id="addBtn">Add</button>
       </div>
-
-      <button id="takeBtn">Taken</button>
     </div>
+
+    <!-- Use/Record Section (dynamic) -->
+    <div id="useSection">
+      <!-- Will be filled dynamically -->
+    </div>
+
+    <!-- Current Stocks (only TP and SW) -->
     <div class="item current-stocks">
       <label>Current Stocks:</label>
       <div>Toilet Paper: <span id="tpStock">0</span></div>
       <div>Saniwipes: <span id="swStock">0</span></div>
-      <div>First Aid Plasters: <span id="fapStock">0</span></div>
-      <div>First Aid Masks: <span id="famStock">0</span></div>
-      <div>Deep Heat Spray: <span id="dhsStock">0</span></div>
-      <div>First Aid Bandage: <span id="fabStock">0</span></div>
     </div>
   </div>
+
   <div class="stats-section">
     <h2>Stats Report</h2>
     <button class="reset" id="resetBtn">Reset Stats</button>
@@ -291,13 +281,14 @@
     </div>
   </div>
 </div>
+
 <script>
   // JSON Bin API Configuration
   const JSON_BIN_API_URL = 'https://api.jsonbin.io/v3/b/68872a55ae596e708fbcdef8';
   const JSON_BIN_API_KEY = '$2a$10$BqM/s2f2kqZGoB5V14WtWOPOVO5/ccx/wZtBqmQsgeQqh6WMp42We';
   const RESET_PASSWORD = 'Superb@123';
 
-  // Inventory items with initial values
+  // Inventory: only TP and SW have stock
   let items = {
     tp: { name: 'Toilet Paper', stock: 0, in: 0, out: 0 },
     sw: { name: 'Saniwipes', stock: 0, in: 0, out: 0 },
@@ -308,143 +299,56 @@
   };
   let transactionLog = [];
 
-  // Map item keys to their respective stock display IDs
+  // Map for stock display
   const stockDisplayIds = {
     tp: 'tpStock',
-    sw: 'swStock',
-    fap: 'fapStock',
-    fam: 'famStock',
-    dhs: 'dhsStock',
-    fab: 'fabStock'
+    sw: 'swStock'
   };
 
-  // Load data from JSON Bin
+  // Load data
   function loadData() {
     fetch(JSON_BIN_API_URL, {
-        method: 'GET',
-        headers: {
-            'X-Master-Key': JSON_BIN_API_KEY
-        }
+      method: 'GET',
+      headers: { 'X-Master-Key': JSON_BIN_API_KEY }
     })
-    .then(response => {
-        if (!response.ok) {
-            if (response.status === 404) {
-                console.warn('JSON Bin not found (404), initializing defaults.');
-                initializeDefaults();
-                return null;
-            }
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        return response.json();
-    })
+    .then(r => r.ok ? r.json() : initializeDefaults())
     .then(data => {
-        if (data && data.record) {
-            for (const key in data.record.inventory) {
-                if (items[key]) {
-                    items[key] = data.record.inventory[key];
-                } else {
-                    items[key] = data.record.inventory[key];
-                }
-            }
-            for (const key in items) {
-                if (!data.record.inventory[key]) {
-                    items[key] = { ...items[key] };
-                }
-            }
-            transactionLog = Array.isArray(data.record.transactionLog) ? data.record.transactionLog : [];
-            console.log('Data loaded from JSON bin.');
-        } else {
-            console.log("No valid data fetched. Using defaults.");
-            initializeDefaults();
-        }
+      if (data?.record) {
+        if (data.record.inventory.tp) items.tp = data.record.inventory.tp;
+        if (data.record.inventory.sw) items.sw = data.record.inventory.sw;
+        transactionLog = Array.isArray(data.record.transactionLog) ? data.record.transactionLog : [];
+      }
     })
-    .catch(error => {
-        console.error('Error loading from JSON bin:', error);
-        alert('Cloud load failed. Loading from local storage or defaults.');
-        const saved = localStorage.getItem('inventory');
-        if (saved) {
-            try {
-                const savedItems = JSON.parse(saved);
-                for (const key in items) {
-                    if (savedItems[key]) items[key] = savedItems[key];
-                }
-                for (const key in savedItems) {
-                    if (!items[key]) items[key] = savedItems[key];
-                }
-            } catch (e) {
-                console.error('Error parsing inventory from localStorage:', e);
-            }
-        }
-        const savedLog = localStorage.getItem('transactionLog');
-        if (savedLog) {
-            try {
-                const parsedLog = JSON.parse(savedLog);
-                if (Array.isArray(parsedLog) && parsedLog.length > 0 && typeof parsedLog[0] === 'string') {
-                    transactionLog = parsedLog.map(entry => {
-                        const match = entry.match(/\[(\d{2}\/\d{2}\/\d{4}), (\d{2}:\d{2}:\d{2})\] (Added|Taken) (\d+) of (.*) by (.*)\./);
-                        if (match) {
-                            const [day, month, year] = match[1].split('/').map(Number);
-                            const [hours, minutes, seconds] = match[2].split(':').map(Number);
-                            const date = new Date(year, month - 1, day, hours, minutes, seconds);
-                            let itemKey = '';
-                            for (const key in items) {
-                                if (items[key].name === match[5]) {
-                                    itemKey = key;
-                                    break;
-                                }
-                            }
-                            return {
-                                timestamp: date.toISOString(),
-                                type: match[3].toLowerCase() === 'added' ? 'add' : 'take',
-                                itemKey,
-                                quantity: Number(match[4]),
-                                person: match[6]
-                            };
-                        }
-                        return null;
-                    }).filter(entry => entry !== null);
-                } else {
-                    transactionLog = Array.isArray(parsedLog) ? parsedLog : [];
-                }
-            } catch (e) {
-                console.error('Error parsing transactionLog from localStorage:', e);
-                transactionLog = [];
-            }
-        }
-        if (!saved && !savedLog && transactionLog.length === 0) {
-            initializeDefaults();
-        }
+    .catch(() => {
+      console.warn('Using defaults or localStorage');
+      const saved = localStorage.getItem('inventory');
+      if (saved) try { const s = JSON.parse(saved); items.tp = s.tp || items.tp; items.sw = s.sw || items.sw; } catch {}
+      const log = localStorage.getItem('transactionLog');
+      if (log) try { transactionLog = JSON.parse(log); } catch {}
+      if (transactionLog.length === 0) initializeDefaults();
     })
     .finally(() => {
-        updateDisplay();
-        updateStats();
-        updateLog();
-        generateReports();
-        updateToiletAreaVisibility(); // Ensure correct visibility on load
+      updateDisplay();
+      updateStats();
+      updateLog();
+      generateReports();
+      updateFormSections(); // Ensure UI is correct on load
     });
   }
 
   function saveData() {
-    const dataToSave = { inventory: items, transactionLog };
+    const data = { inventory: { tp: items.tp, sw: items.sw }, transactionLog };
     fetch(JSON_BIN_API_URL, {
-        method: 'PUT',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-Master-Key': JSON_BIN_API_KEY,
-            'X-Bin-Meta': 'false'
-        },
-        body: JSON.stringify(dataToSave)
-    })
-    .then(response => {
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-        return response.json();
-    })
-    .then(data => console.log('Saved to JSON bin:', data))
-    .catch(error => {
-        console.error('Save failed:', error);
-        alert('Cloud save failed. Saved to local storage.');
-        localStorage.setItem('inventory', JSON.stringify(items));
-        localStorage.setItem('transactionLog', JSON.stringify(transactionLog));
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Master-Key': JSON_BIN_API_KEY,
+        'X-Bin-Meta': 'false'
+      },
+      body: JSON.stringify(data)
+    }).catch(() => {
+      localStorage.setItem('inventory', JSON.stringify({ tp: items.tp, sw: items.sw }));
+      localStorage.setItem('transactionLog', JSON.stringify(transactionLog));
     });
   }
 
@@ -452,186 +356,245 @@
     items = {
       tp: { name: 'Toilet Paper', stock: 6, in: 205, out: 199 },
       sw: { name: 'Saniwipes', stock: 7, in: 12, out: 5 },
-      fap: { name: 'First Aid Plasters', stock: 91, in: 103, out: 12 },
-      fam: { name: 'First Aid Masks', stock: 95, in: 98, out: 3 },
+      fap: { name: 'First Aid Plasters', stock: 0, in: 0, out: 0 },
+      fam: { name: 'First Aid Masks', stock: 0, in: 0, out: 0 },
       dhs: { name: 'Deep Heat Spray', stock: 0, in: 0, out: 0 },
       fab: { name: 'First Aid Bandage', stock: 0, in: 0, out: 0 }
     };
     transactionLog = [
       { timestamp: "2025-07-27T09:50:08.000Z", type: "take", itemKey: "tp", quantity: 12, person: "Jabu", area: "Customer" },
       { timestamp: "2025-07-27T08:07:41.000Z", type: "take", itemKey: "tp", quantity: 12, person: "Bongiwe", area: "Team Members" },
-      { timestamp: "2025-07-27T07:56:10.000Z", type: "take", itemKey: "fap", quantity: 2, person: "Noxolom" },
+      { timestamp: "2025-07-27T07:56:10.000Z", type: "use", itemKey: "fap", quantity: 2, person: "Noxolom" },
       { timestamp: "2025-07-26T15:07:50.000Z", type: "take", itemKey: "sw", quantity: 1, person: "Khanyisile" },
-      { timestamp: "2025-07-26T12:54:21.000Z", type: "take", itemKey: "fap", quantity: 2, person: "MM2" },
-      { timestamp: "2025-07-26T12:26:43.000Z", type: "take", itemKey: "fap", quantity: 2, person: "MM2" },
+      { timestamp: "2025-07-26T12:54:21.000Z", type: "use", itemKey: "fap", quantity: 2, person: "MM2" },
+      { timestamp: "2025-07-26T12:26:43.000Z", type: "use", itemKey: "fap", quantity: 2, person: "MM2" },
       { timestamp: "2025-07-26T12:26:22.000Z", type: "take", itemKey: "tp", quantity: 6, person: "Bongiwe", area: "Prayer" },
-      { timestamp: "2025-07-26T08:34:59.000Z", type: "take", itemKey: "fam", quantity: 1, person: "PnS merchandiser" },
+      { timestamp: "2025-07-26T08:34:59.000Z", type: "use", itemKey: "fam", quantity: 1, person: "PnS merchandiser" },
       { timestamp: "2025-07-26T08:13:14.000Z", type: "take", itemKey: "tp", quantity: 12, person: "Bongiwe", area: "Main Office" },
-      { timestamp: "2025-07-26T07:46:48.000Z", type: "take", itemKey: "tp", quantity: 6, person: "Abigail", area: "Customer" }
+      { timestamp: "2025-07-26T07:46:48.000Z", type: "use", itemKey: "dhs", quantity: 1, person: "Abigail" }
     ];
   }
 
   function updateDisplay() {
-    for (const key in items) {
-      const element = document.getElementById(stockDisplayIds[key]);
-      if (element) element.textContent = items[key].stock;
-    }
+    ['tp', 'sw'].forEach(key => {
+      const el = document.getElementById(stockDisplayIds[key]);
+      if (el) el.textContent = items[key].stock;
+    });
   }
 
   function updateStats() {
     let html = '<table><thead><tr><th>Item</th><th>Current Stock</th><th>Total In</th><th>Total Out</th></tr></thead><tbody>';
-    for (const key in items) {
-      const item = items[key];
-      html += `<tr><td>${item.name}</td><td>${item.stock}</td><td>${item.in}</td><td>${item.out}</td></tr>`;
-    }
+    ['tp', 'sw'].forEach(key => {
+      const i = items[key];
+      html += `<tr><td>${i.name}</td><td>${i.stock}</td><td>${i.in}</td><td>${i.out}</td></tr>`;
+    });
     html += '</tbody></table>';
     document.getElementById('stats').innerHTML = html;
   }
 
   function updateLog() {
     const logDiv = document.getElementById('log');
-    if (transactionLog.length === 0) {
-      logDiv.innerHTML = '<p>No transactions yet.</p>';
-      return;
-    }
     let html = '';
     for (const key in items) {
       const item = items[key];
-      const itemLogs = transactionLog.filter(entry => entry.itemKey === key && entry.type !== 'reset');
-      if (itemLogs.length > 0) {
-        html += `<div class="item-log-title">${item.name} Transactions</div>`;
-        html += '<div class="item-log-container">';
-        const reversedLogs = [...itemLogs].reverse();
-        for (const entry of reversedLogs) {
-          const date = new Date(entry.timestamp);
-          const formattedDate = date.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
-          const formattedTime = date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-          let logText = `[${formattedDate}, ${formattedTime}] ${entry.type === 'add' ? 'Added' : 'Taken'} ${entry.quantity} of ${item.name} by ${entry.person}`;
-          if (entry.itemKey === 'tp' && entry.area) {
-            logText += ` for ${entry.area}`;
-          }
-          logText += '.';
-          html += `<div class="log-entry">${logText}</div>`;
-        }
-        html += '</div>';
-      }
-    }
-    const resetEntries = transactionLog.filter(entry => entry.type === 'reset');
-    if (resetEntries.length > 0) {
-      html += '<div class="item-log-title">System Resets</div>';
+      const logs = transactionLog.filter(e => e.itemKey === key && e.type !== 'reset');
+      if (logs.length === 0) continue;
+      html += `<div class="item-log-title">${item.name} Transactions</div>`;
       html += '<div class="item-log-container">';
-      const reversedResets = [...resetEntries].reverse();
-      for (const entry of reversedResets) {
+      [...logs].reverse().forEach(entry => {
         const date = new Date(entry.timestamp);
-        const formattedDate = date.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
-        const formattedTime = date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-        html += `<div class="log-entry">[${formattedDate}, ${formattedTime}] Stats and stock reset by ${entry.person}.</div>`;
-      }
+        const fDate = date.toLocaleDateString('en-GB', { day:'2-digit', month:'2-digit', year:'numeric' });
+        const fTime = date.toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+        let text = `[${fDate}, ${fTime}]`;
+        if (entry.type === 'add') {
+          text += ` Added ${entry.quantity} by ${entry.person}.`;
+        } else if (entry.type === 'take') {
+          text += ` Taken ${entry.quantity} by ${entry.person}`;
+          if (entry.itemKey === 'tp' && entry.area) text += ` for ${entry.area}`;
+          text += '.';
+        } else if (entry.type === 'use') {
+          text += ` Used ${entry.quantity} of ${item.name} by ${entry.person}.`;
+        }
+        html += `<div class="log-entry">${text}</div>`;
+      });
       html += '</div>';
     }
     logDiv.innerHTML = html;
   }
 
-  function applyHighlight(itemKey) {
-    const stockElement = document.getElementById(stockDisplayIds[itemKey]);
-    if (stockElement) {
-      stockElement.classList.add('stock-highlight');
-      setTimeout(() => stockElement.classList.remove('stock-highlight'), 1000);
+  function applyHighlight(key) {
+    const el = document.getElementById(stockDisplayIds[key]);
+    if (el) {
+      el.classList.add('stock-highlight');
+      setTimeout(() => el.classList.remove('stock-highlight'), 1000);
+    }
+  }
+
+  // Dynamic form rendering
+  function updateFormSections() {
+    const itemKey = document.getElementById('itemSelect').value;
+    const useSection = document.getElementById('useSection');
+    const addSection = document.getElementById('addSection');
+
+    // Show Add Stock only for TP and SW
+    addSection.style.display = ['tp', 'sw'].includes(itemKey) ? 'block' : 'none';
+
+    // Build Use Section
+    let html = '';
+
+    if (itemKey === 'tp') {
+      html = `
+        <label for="quantityOut">Take Stock:</label>
+        <input type="number" id="quantityOut" min="1" placeholder="Quantity" />
+        <input type="text" id="personOut" placeholder="Person's Name" />
+        <div style="width:200px;">
+          <select id="toiletArea">
+            <option value="">Select Area</option>
+            <option value="Prayer">Prayer</option>
+            <option value="Customer">Customer</option>
+            <option value="Team Members">Team Members</option>
+            <option value="Main Office">Main Office</option>
+          </select>
+        </div>
+        <button id="takeBtn">Taken</button>
+      `;
+    } else if (itemKey === 'sw') {
+      html = `
+        <label for="quantityOut">Take Stock:</label>
+        <input type="number" id="quantityOut" min="1" placeholder="Quantity" />
+        <input type="text" id="personOut" placeholder="Person's Name" />
+        <button id="takeBtn">Taken</button>
+      `;
+    } else {
+      html = `
+        <label for="quantityUse">Quantity Used:</label>
+        <input type="number" id="quantityUse" min="1" placeholder="Quantity" />
+        <input type="text" id="personUse" placeholder="Person's Name" />
+        <button id="useBtn">Record Use</button>
+      `;
+    }
+
+    useSection.innerHTML = html;
+
+    // Reattach event listeners
+    if (itemKey === 'tp' || itemKey === 'sw') {
+      document.getElementById('takeBtn')?.addEventListener('click', takeStock);
+    } else {
+      document.getElementById('useBtn')?.addEventListener('click', recordUse);
+    }
+
+    // Reattach Add Stock listener only if visible
+    if (['tp', 'sw'].includes(itemKey)) {
+      const addBtn = document.getElementById('addBtn');
+      addBtn?.replaceWith(addBtn.cloneNode(true)); // Clean reset
+      document.getElementById('addBtn')?.addEventListener('click', addStock);
     }
   }
 
   function addStock() {
-    const itemKey = document.getElementById('itemSelect').value;
+    const key = document.getElementById('itemSelect').value;
+    if (!['tp', 'sw'].includes(key)) {
+      alert('Stock cannot be added for this item.');
+      return;
+    }
+
     const qty = Number(document.getElementById('quantityIn').value);
     const person = document.getElementById('personIn').value.trim();
-    if (!qty || qty <= 0) return alert('Please enter a positive quantity to add.');
-    if (!person) return alert('Please enter the person\'s name.');
-    items[itemKey].stock += qty;
-    items[itemKey].in += qty;
+
+    if (!qty || qty <= 0) return alert('Enter a positive quantity.');
+    if (!person) return alert('Enter person\'s name.');
+
+    items[key].stock += qty;
+    items[key].in += qty;
+
     transactionLog.push({
       timestamp: new Date().toISOString(),
-      type: "add",
-      itemKey,
+      type: 'add',
+      itemKey: key,
       quantity: qty,
       person
     });
+
     saveData();
     updateDisplay();
     updateStats();
     updateLog();
     generateReports();
-    applyHighlight(itemKey);
+    applyHighlight(key);
+
     document.getElementById('quantityIn').value = '';
     document.getElementById('personIn').value = '';
   }
 
   function takeStock() {
-    const itemKey = document.getElementById('itemSelect').value;
+    const key = document.getElementById('itemSelect').value;
     const qty = Number(document.getElementById('quantityOut').value);
     const person = document.getElementById('personOut').value.trim();
+    const area = key === 'tp' ? document.getElementById('toiletArea').value : '';
 
-    if (!qty || qty <= 0) return alert('Please enter a positive quantity to take.');
-    if (!person) return alert('Please enter the person\'s name.');
+    if (!qty || qty <= 0) return alert('Enter quantity.');
+    if (!person) return alert('Enter person\'s name.');
+    if (key === 'tp' && !area) return alert('Select area for Toilet Paper.');
+    if (items[key].stock < qty) return alert(`Not enough ${items[key].name}.`);
 
-    if (items[itemKey].stock < qty) {
-      return alert(`Not enough stock of ${items[itemKey].name}. Current stock: ${items[itemKey].stock}`);
-    }
+    items[key].stock -= qty;
+    items[key].out += qty;
 
-    let area = '';
-    if (itemKey === 'tp') {
-      area = document.getElementById('toiletArea').value;
-      if (!area) return alert('Please select an area for taking toilet paper.');
-    }
-
-    items[itemKey].stock -= qty;
-    items[itemKey].out += qty;
-
-    const transaction = {
+    const entry = {
       timestamp: new Date().toISOString(),
-      type: "take",
-      itemKey,
+      type: 'take',
+      itemKey: key,
       quantity: qty,
       person
     };
+    if (key === 'tp') entry.area = area;
 
-    if (itemKey === 'tp') {
-      transaction.area = area;
-    }
-
-    transactionLog.push(transaction);
-
+    transactionLog.push(entry);
     saveData();
     updateDisplay();
     updateStats();
     updateLog();
     generateReports();
-    applyHighlight(itemKey);
+    applyHighlight(key);
 
     document.getElementById('quantityOut').value = '';
     document.getElementById('personOut').value = '';
-    if (itemKey === 'tp') {
-      document.getElementById('toiletArea').value = '';
-    }
+    if (key === 'tp') document.getElementById('toiletArea').value = '';
+  }
+
+  function recordUse() {
+    const key = document.getElementById('itemSelect').value;
+    const qty = Number(document.getElementById('quantityUse').value);
+    const person = document.getElementById('personUse').value.trim();
+
+    if (!qty || qty <= 0) return alert('Enter a positive quantity used.');
+    if (!person) return alert('Enter person\'s name.');
+
+    transactionLog.push({
+      timestamp: new Date().toISOString(),
+      type: 'use',
+      itemKey: key,
+      quantity: qty,
+      person
+    });
+
+    saveData();
+    updateLog();
+    generateReports();
+
+    document.getElementById('quantityUse').value = '';
+    document.getElementById('personUse').value = '';
   }
 
   function resetStats() {
-    const password = prompt('Please enter the password to reset stats:');
-    if (password === null) return;
-    if (password !== RESET_PASSWORD) return alert('Incorrect password. Reset cancelled.');
-    if (!confirm('Are you sure you want to reset all stats and logs? This cannot be undone.')) return;
+    const p = prompt('Password:');
+    if (p !== RESET_PASSWORD) return alert('Incorrect password.');
+    if (!confirm('Reset all?')) return;
 
-    for (const key in items) {
-      items[key].stock = 0;
-      items[key].in = 0;
-      items[key].out = 0;
-    }
-    transactionLog = [{
-      timestamp: new Date().toISOString(),
-      type: "reset",
-      itemKey: "all",
-      quantity: 0,
-      person: "User (Password Reset)"
-    }];
+    items.tp = { name: 'Toilet Paper', stock: 0, in: 0, out: 0 };
+    items.sw = { name: 'Saniwipes', stock: 0, in: 0, out: 0 };
+    transactionLog = [{ timestamp: new Date().toISOString(), type: 'reset', person: 'Admin' }];
+
     saveData();
     updateDisplay();
     updateStats();
@@ -639,21 +602,20 @@
     generateReports();
   }
 
+  // Helper: Aggregate report data for TP and SW only
   function getAggregatedReport(filteredLogs) {
-    const reportData = {};
-    for (const key in items) {
-      reportData[key] = { in: 0, out: 0 };
-    }
+    const reportData = { tp: { in: 0, out: 0 }, sw: { in: 0, out: 0 } };
     filteredLogs.forEach(entry => {
-      if (entry.type === 'reset') return;
-      if (entry.itemKey in reportData) {
-        if (entry.type === 'add') reportData[entry.itemKey].in += entry.quantity;
-        else if (entry.type === 'take') reportData[entry.itemKey].out += entry.quantity;
+      if (entry.type === 'add' && ['tp', 'sw'].includes(entry.itemKey)) {
+        reportData[entry.itemKey].in += entry.quantity;
+      } else if (entry.type === 'take' && ['tp', 'sw'].includes(entry.itemKey)) {
+        reportData[entry.itemKey].out += entry.quantity;
       }
     });
+
     let html = '';
     let totalIn = 0, totalOut = 0;
-    for (const key in reportData) {
+    for (const key of ['tp', 'sw']) {
       const item = items[key];
       if (reportData[key].in > 0 || reportData[key].out > 0) {
         html += `<div class="report-summary-item">${item.name}: Added ${reportData[key].in}, Taken ${reportData[key].out}</div>`;
@@ -676,7 +638,8 @@
     const today = new Date();
     const firstDayOfWeek = new Date(today.getFullYear(), today.getMonth(), today.getDate() - today.getDay());
     firstDayOfWeek.setHours(0, 0, 0, 0);
-    const lastDayOfWeek = new Date(firstDayOfWeek); lastDayOfWeek.setDate(lastDayOfWeek.getDate() + 7);
+    const lastDayOfWeek = new Date(firstDayOfWeek);
+    lastDayOfWeek.setDate(lastDayOfWeek.getDate() + 7);
     const logs = transactionLog.filter(e => new Date(e.timestamp) >= firstDayOfWeek && new Date(e.timestamp) < lastDayOfWeek);
     document.getElementById('weeklyReport').innerHTML = getAggregatedReport(logs);
   }
@@ -713,126 +676,91 @@
   }
 
   function exportToCsv() {
-    let csvContent = "text/csv;charset=utf-8,Item,Current Stock,Total In,Total Out\n";
-    for (const key in items) {
-      const item = items[key];
-      csvContent += `${item.name},${item.stock},${item.in},${item.out}\n`;
-    }
-
-    csvContent += "\n\nTransaction Log\n";
-    csvContent += "Timestamp,Action,Item,Quantity,Person,Area\n";
-
-    [...transactionLog].reverse().forEach(entry => {
-      if (entry.type !== 'reset') {
-        const date = new Date(entry.timestamp);
-        const formattedDate = date.toLocaleString('en-GB');
-        const action = entry.type === 'add' ? 'Added' : 'Taken';
-        const itemName = items[entry.itemKey]?.name || entry.itemKey;
-        const area = entry.itemKey === 'tp' && entry.area ? entry.area : '';
-        csvContent += `"${formattedDate}","${action}","${itemName}",${entry.quantity},"${entry.person}","${area}"\n`;
-      }
+    let csv = "text/csv;charset=utf-8,Item,Current Stock,Total In,Total Out\n";
+    ['tp','sw'].forEach(k => {
+      const i = items[k];
+      csv += `${i.name},${i.stock},${i.in},${i.out}\n`;
     });
-
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", "inventory_report.csv");
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    csv += "\n\nTransaction Log\nTimestamp,Action,Item,Quantity,Person,Area\n";
+    [...transactionLog].reverse().forEach(e => {
+      if (e.type === 'reset') return;
+      const t = new Date(e.timestamp).toLocaleString('en-GB');
+      let action, item, qty = '', person = e.person, area = '';
+      if (e.type === 'add') { action = 'Added'; item = e.itemKey === 'tp' ? 'Toilet Paper' : 'Saniwipes'; qty = e.quantity; }
+      else if (e.type === 'take') { action = 'Taken'; item = items[e.itemKey].name; qty = e.quantity; if (e.itemKey === 'tp') area = e.area; }
+      else if (e.type === 'use') { action = 'Used'; item = items[e.itemKey].name; qty = e.quantity; }
+      csv += `"${t}","${action}","${item}","${qty}","${person}","${area}"\n`;
+    });
+    const a = document.createElement("a");
+    a.href = encodeURI(csv);
+    a.download = "inventory_report.csv";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   }
 
   function exportToPdf() {
-    if (typeof window.jspdf === 'undefined') {
-      alert("jsPDF not loaded. Please check internet connection.");
-      return;
-    }
+    if (!window.jspdf) return alert("jsPDF not loaded.");
     const { jsPDF } = window.jspdf;
-    if (typeof doc.autoTable === 'undefined' && typeof jsPDF.prototype.autoTable === 'undefined') {
-      alert("jsPDF AutoTable plugin not loaded.");
-      return;
-    }
     const doc = new jsPDF();
+    if (!doc.autoTable) return alert("AutoTable not loaded.");
 
-    const reportType = (prompt("Enter report type: 'month', 'year', or 'life' (default)") || 'life').toLowerCase();
-    let filteredTransactions = [];
-    let reportTitle = "Reception Stock Inventory Report (Life to Date)";
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-
+    const reportType = prompt("Report: 'month', 'year', 'life'") || 'life';
+    let filtered = transactionLog;
+    const today = new Date(); today.setHours(0,0,0,0);
     if (reportType === 'month') {
-      reportTitle = "Reception Stock Inventory Report (Month to Date)";
-      const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
-      filteredTransactions = transactionLog.filter(e => new Date(e.timestamp) >= firstDay && new Date(e.timestamp) <= today);
+      const start = new Date(today.getFullYear(), today.getMonth(), 1);
+      filtered = transactionLog.filter(e => new Date(e.timestamp) >= start && new Date(e.timestamp) <= today);
     } else if (reportType === 'year') {
-      reportTitle = "Reception Stock Inventory Report (Year to Date)";
-      const firstDay = new Date(today.getFullYear(), 0, 1);
-      filteredTransactions = transactionLog.filter(e => new Date(e.timestamp) >= firstDay && new Date(e.timestamp) <= today);
-    } else {
-      filteredTransactions = transactionLog;
+      const start = new Date(today.getFullYear(), 0, 1);
+      filtered = transactionLog.filter(e => new Date(e.timestamp) >= start && new Date(e.timestamp) <= today);
     }
 
     doc.setFontSize(18);
-    doc.text(reportTitle, 10, 10);
-
+    doc.text(`Reception Stock Inventory (${reportType} to date)`, 10, 10);
     doc.setFontSize(14);
-    doc.text("Current Stock Levels:", 10, 20);
-    const stockTableData = Object.values(items).map(item => [item.name, item.stock, item.in, item.out]);
+    doc.text("Stock Items:", 10, 20);
     doc.autoTable({
       startY: 30,
-      head: [['Item', 'Stock', 'Total In', 'Total Out']],
-      body: stockTableData,
-      theme: 'grid',
-      styles: { fontSize: 10 },
-      columnStyles: { 0: { cellWidth: 50 }, 1: { cellWidth: 25 }, 2: { cellWidth: 30 }, 3: { cellWidth: 30 } }
+      head: [['Item', 'Stock', 'In', 'Out']],
+      body: [['Toilet Paper', items.tp.stock, items.tp.in, items.tp.out],
+             ['Saniwipes', items.sw.stock, items.sw.in, items.sw.out]],
+      theme: 'grid'
     });
 
-    const logY = doc.autoTable.previous ? doc.autoTable.previous.finalY + 10 : 60;
+    const y = doc.autoTable.previous ? doc.autoTable.previous.finalY + 10 : 60;
     doc.setFontSize(14);
-    doc.text("Transaction Log:", 10, logY);
-    const logTableData = [...filteredTransactions].reverse()
-      .filter(e => e.type !== 'reset')
-      .map(e => {
-        const date = new Date(e.timestamp);
-        const formatted = date.toLocaleString('en-GB');
-        let desc = e.type === 'add' ? 'Added' : 'Taken';
-        desc += ` ${e.quantity} of ${items[e.itemKey]?.name || e.itemKey} by ${e.person}`;
+    doc.text("Usage Log:", 10, y);
+    const logData = filtered.reverse().filter(e => e.type !== 'reset').map(e => {
+      const date = new Date(e.timestamp).toLocaleString('en-GB');
+      let desc = '';
+      if (e.type === 'add') desc = `Added ${e.quantity} ${items[e.itemKey].name} by ${e.person}`;
+      else if (e.type === 'take') {
+        desc = `Taken ${e.quantity} ${items[e.itemKey].name} by ${e.person}`;
         if (e.itemKey === 'tp' && e.area) desc += ` for ${e.area}`;
-        return [formatted, desc];
-      });
-
-    if (logTableData.length > 0) {
-      doc.autoTable({
-        startY: logY + 10,
-        head: [['Timestamp', 'Description']],
-        body: logTableData,
-        theme: 'grid',
-        styles: { fontSize: 8 },
-        columnStyles: { 0: { cellWidth: 50 }, 1: { cellWidth: 'auto' } }
-      });
-    } else {
-      doc.text("No transactions for this period.", 10, logY + 10);
-    }
-
-    doc.save(`inventory_report_${reportType}.pdf`);
-  }
-
-  // Show/hide toilet paper area dropdown
-  function updateToiletAreaVisibility() {
-    const itemKey = document.getElementById('itemSelect').value;
-    const container = document.getElementById('toiletPurposeContainer');
-    container.style.display = itemKey === 'tp' ? 'block' : 'none';
+      } else if (e.type === 'use') {
+        desc = `Used ${e.quantity} of ${items[e.itemKey].name} by ${e.person}`;
+      }
+      return [date, desc];
+    });
+    doc.autoTable({
+      startY: y + 10,
+      head: [['Timestamp', 'Action']],
+      body: logData,
+      theme: 'grid',
+      styles: { fontSize: 8 }
+    });
+    doc.save(`report_${reportType}.pdf`);
   }
 
   // Init
   document.addEventListener('DOMContentLoaded', () => {
     loadData();
-
-    document.getElementById('addBtn').addEventListener('click', addStock);
-    document.getElementById('takeBtn').addEventListener('click', takeStock);
+    document.getElementById('itemSelect').addEventListener('change', updateFormSections);
     document.getElementById('resetBtn').addEventListener('click', resetStats);
     document.getElementById('exportCsvBtn').addEventListener('click', exportToCsv);
     document.getElementById('exportPdfBtn').addEventListener('click', exportToPdf);
-    document.getElementById('itemSelect').addEventListener('change', updateToiletAreaVisibility);
+    updateFormSections(); // Initial setup
   });
 </script>
 </body>
