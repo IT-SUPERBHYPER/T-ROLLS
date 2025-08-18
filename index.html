@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -246,6 +247,18 @@
       <label for="quantityOut">Take Stock:</label>
       <input type="number" id="quantityOut" min="0" placeholder="Quantity" />
       <input type="text" id="personOut" placeholder="Person's Name" />
+
+      <!-- Dropdown for Toilet Paper Purpose -->
+      <div id="toiletPurposeContainer" style="display: none; width: 200px;">
+        <select id="toiletPurpose">
+          <option value="">Select Purpose</option>
+          <option value="Prayer">Prayer</option>
+          <option value="Customer">Customer</option>
+          <option value="Team Members">Team Members</option>
+          <option value="Main Office">Main Office</option>
+        </select>
+      </div>
+
       <button id="takeBtn">Taken</button>
     </div>
     <div class="item current-stocks">
@@ -306,7 +319,7 @@
     fab: 'fabStock'
   };
 
-  // Load data from JSON Bin (and fallback to localStorage)
+  // Load data from JSON Bin
   function loadData() {
     fetch(JSON_BIN_API_URL, {
         method: 'GET',
@@ -408,6 +421,7 @@
         updateStats();
         updateLog();
         generateReports();
+        updateToiletPurposeVisibility(); // Ensure correct visibility on load
     });
   }
 
@@ -445,16 +459,16 @@
       fab: { name: 'First Aid Bandage', stock: 0, in: 0, out: 0 }
     };
     transactionLog = [
-      { timestamp: "2025-07-27T09:50:08.000Z", type: "take", itemKey: "tp", quantity: 12, person: "Jabu" },
-      { timestamp: "2025-07-27T08:07:41.000Z", type: "take", itemKey: "tp", quantity: 12, person: "Bongiwe" },
+      { timestamp: "2025-07-27T09:50:08.000Z", type: "take", itemKey: "tp", quantity: 12, person: "Jabu", purpose: "Customer" },
+      { timestamp: "2025-07-27T08:07:41.000Z", type: "take", itemKey: "tp", quantity: 12, person: "Bongiwe", purpose: "Team Members" },
       { timestamp: "2025-07-27T07:56:10.000Z", type: "take", itemKey: "fap", quantity: 2, person: "Noxolom" },
       { timestamp: "2025-07-26T15:07:50.000Z", type: "take", itemKey: "sw", quantity: 1, person: "Khanyisile" },
       { timestamp: "2025-07-26T12:54:21.000Z", type: "take", itemKey: "fap", quantity: 2, person: "MM2" },
       { timestamp: "2025-07-26T12:26:43.000Z", type: "take", itemKey: "fap", quantity: 2, person: "MM2" },
-      { timestamp: "2025-07-26T12:26:22.000Z", type: "take", itemKey: "tp", quantity: 6, person: "Bongiwe" },
+      { timestamp: "2025-07-26T12:26:22.000Z", type: "take", itemKey: "tp", quantity: 6, person: "Bongiwe", purpose: "Prayer" },
       { timestamp: "2025-07-26T08:34:59.000Z", type: "take", itemKey: "fam", quantity: 1, person: "PnS merchandiser" },
-      { timestamp: "2025-07-26T08:13:14.000Z", type: "take", itemKey: "tp", quantity: 12, person: "Bongiwe" },
-      { timestamp: "2025-07-26T07:46:48.000Z", type: "take", itemKey: "tp", quantity: 6, person: "Abigail" }
+      { timestamp: "2025-07-26T08:13:14.000Z", type: "take", itemKey: "tp", quantity: 12, person: "Bongiwe", purpose: "Main Office" },
+      { timestamp: "2025-07-26T07:46:48.000Z", type: "take", itemKey: "tp", quantity: 6, person: "Abigail", purpose: "Customer" }
     ];
   }
 
@@ -493,8 +507,12 @@
           const date = new Date(entry.timestamp);
           const formattedDate = date.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
           const formattedTime = date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-          const actionText = entry.type === 'add' ? 'Added' : 'Taken';
-          html += `<div class="log-entry">[${formattedDate}, ${formattedTime}] ${actionText} ${entry.quantity} by ${entry.person}.</div>`;
+          let logText = `[${formattedDate}, ${formattedTime}] ${entry.type === 'add' ? 'Added' : 'Taken'} ${entry.quantity} of ${item.name} by ${entry.person}`;
+          if (entry.itemKey === 'tp' && entry.purpose) {
+            logText += ` for ${entry.purpose}`;
+          }
+          logText += '.';
+          html += `<div class="log-entry">${logText}</div>`;
         }
         html += '</div>';
       }
@@ -552,26 +570,49 @@
     const itemKey = document.getElementById('itemSelect').value;
     const qty = Number(document.getElementById('quantityOut').value);
     const person = document.getElementById('personOut').value.trim();
+
     if (!qty || qty <= 0) return alert('Please enter a positive quantity to take.');
     if (!person) return alert('Please enter the person\'s name.');
-    if (items[itemKey].stock < qty) return alert(`Not enough stock of ${items[itemKey].name}. Current stock: ${items[itemKey].stock}`);
+
+    if (items[itemKey].stock < qty) {
+      return alert(`Not enough stock of ${items[itemKey].name}. Current stock: ${items[itemKey].stock}`);
+    }
+
+    let purpose = '';
+    if (itemKey === 'tp') {
+      purpose = document.getElementById('toiletPurpose').value;
+      if (!purpose) return alert('Please select a purpose for taking toilet paper.');
+    }
+
     items[itemKey].stock -= qty;
     items[itemKey].out += qty;
-    transactionLog.push({
+
+    const transaction = {
       timestamp: new Date().toISOString(),
       type: "take",
       itemKey,
       quantity: qty,
       person
-    });
+    };
+
+    if (itemKey === 'tp') {
+      transaction.purpose = purpose;
+    }
+
+    transactionLog.push(transaction);
+
     saveData();
     updateDisplay();
     updateStats();
     updateLog();
     generateReports();
     applyHighlight(itemKey);
+
     document.getElementById('quantityOut').value = '';
     document.getElementById('personOut').value = '';
+    if (itemKey === 'tp') {
+      document.getElementById('toiletPurpose').value = '';
+    }
   }
 
   function resetStats() {
@@ -579,6 +620,7 @@
     if (password === null) return;
     if (password !== RESET_PASSWORD) return alert('Incorrect password. Reset cancelled.');
     if (!confirm('Are you sure you want to reset all stats and logs? This cannot be undone.')) return;
+
     for (const key in items) {
       items[key].stock = 0;
       items[key].in = 0;
@@ -598,7 +640,6 @@
     generateReports();
   }
 
-  // Helper: Aggregate report data
   function getAggregatedReport(filteredLogs) {
     const reportData = {};
     for (const key in items) {
@@ -625,7 +666,6 @@
     return `<div class="report-summary">Total Added: ${totalIn}</div><div class="report-summary">Total Taken: ${totalOut}</div>` + html;
   }
 
-  // Daily Report
   function updateDailyReport() {
     const today = new Date(); today.setHours(0, 0, 0, 0);
     const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
@@ -633,7 +673,6 @@
     document.getElementById('dailyReport').innerHTML = getAggregatedReport(logs);
   }
 
-  // Weekly Report
   function updateWeeklyReport() {
     const today = new Date();
     const firstDayOfWeek = new Date(today.getFullYear(), today.getMonth(), today.getDate() - today.getDay());
@@ -643,7 +682,6 @@
     document.getElementById('weeklyReport').innerHTML = getAggregatedReport(logs);
   }
 
-  // Current Month Report
   function updateCurrentMonthReport() {
     const today = new Date();
     const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
@@ -656,7 +694,6 @@
     `;
   }
 
-  // Last Month Report
   function updateLastMonthReport() {
     const today = new Date();
     const firstDayLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
@@ -669,7 +706,6 @@
     `;
   }
 
-  // Generate all reports
   function generateReports() {
     updateDailyReport();
     updateWeeklyReport();
@@ -677,23 +713,27 @@
     updateLastMonthReport();
   }
 
-  // Export to CSV
   function exportToCsv() {
-    let csvContent = "data:text/csv;charset=utf-8,Item,Current Stock,Total In,Total Out\n";
+    let csvContent = "text/csv;charset=utf-8,Item,Current Stock,Total In,Total Out\n";
     for (const key in items) {
       const item = items[key];
       csvContent += `${item.name},${item.stock},${item.in},${item.out}\n`;
     }
-    csvContent += "\n\nTransaction Log\nTimestamp,Action,Item,Quantity,Person\n";
+
+    csvContent += "\n\nTransaction Log\n";
+    csvContent += "Timestamp,Action,Item,Quantity,Person,Purpose\n";
+
     [...transactionLog].reverse().forEach(entry => {
       if (entry.type !== 'reset') {
         const date = new Date(entry.timestamp);
         const formattedDate = date.toLocaleString('en-GB');
-        const itemName = items[entry.itemKey]?.name || entry.itemKey;
         const action = entry.type === 'add' ? 'Added' : 'Taken';
-        csvContent += `"${formattedDate}","${action}","${itemName}",${entry.quantity},"${entry.person}"\n`;
+        const itemName = items[entry.itemKey]?.name || entry.itemKey;
+        const purpose = entry.itemKey === 'tp' && entry.purpose ? entry.purpose : '';
+        csvContent += `"${formattedDate}","${action}","${itemName}",${entry.quantity},"${entry.person}","${purpose}"\n`;
       }
     });
+
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
@@ -703,18 +743,17 @@
     document.body.removeChild(link);
   }
 
-  // Export to PDF
   function exportToPdf() {
-    if (typeof window.jspdf === 'undefined' || typeof window.jspdf.AcroForm === 'undefined') {
-      alert("jsPDF not loaded.");
+    if (typeof window.jspdf === 'undefined') {
+      alert("jsPDF not loaded. Please check internet connection.");
       return;
     }
     const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
-    if (typeof doc.autoTable !== 'function') {
+    if (typeof doc.autoTable === 'undefined' && typeof jsPDF.prototype.autoTable === 'undefined') {
       alert("jsPDF AutoTable plugin not loaded.");
       return;
     }
+    const doc = new jsPDF();
 
     const reportType = (prompt("Enter report type: 'month', 'year', or 'life' (default)") || 'life').toLowerCase();
     let filteredTransactions = [];
@@ -748,7 +787,7 @@
       columnStyles: { 0: { cellWidth: 50 }, 1: { cellWidth: 25 }, 2: { cellWidth: 30 }, 3: { cellWidth: 30 } }
     });
 
-    const logY = doc.autoTable.previous.finalY + 10;
+    const logY = doc.autoTable.previous ? doc.autoTable.previous.finalY + 10 : 60;
     doc.setFontSize(14);
     doc.text("Transaction Log:", 10, logY);
     const logTableData = [...filteredTransactions].reverse()
@@ -756,9 +795,10 @@
       .map(e => {
         const date = new Date(e.timestamp);
         const formatted = date.toLocaleString('en-GB');
-        const action = e.type === 'add' ? 'Added' : 'Taken';
-        const name = items[e.itemKey]?.name || e.itemKey;
-        return [formatted, `${action} ${e.quantity} of ${name} by ${e.person}`];
+        let desc = e.type === 'add' ? 'Added' : 'Taken';
+        desc += ` ${e.quantity} of ${items[e.itemKey]?.name || e.itemKey} by ${e.person}`;
+        if (e.itemKey === 'tp' && e.purpose) desc += ` for ${e.purpose}`;
+        return [formatted, desc];
       });
 
     if (logTableData.length > 0) {
@@ -777,15 +817,25 @@
     doc.save(`inventory_report_${reportType}.pdf`);
   }
 
+  // Show/hide toilet paper purpose dropdown
+  function updateToiletPurposeVisibility() {
+    const itemKey = document.getElementById('itemSelect').value;
+    const container = document.getElementById('toiletPurposeContainer');
+    container.style.display = itemKey === 'tp' ? 'block' : 'none';
+  }
+
   // Init
   document.addEventListener('DOMContentLoaded', () => {
     loadData();
+
     document.getElementById('addBtn').addEventListener('click', addStock);
     document.getElementById('takeBtn').addEventListener('click', takeStock);
     document.getElementById('resetBtn').addEventListener('click', resetStats);
     document.getElementById('exportCsvBtn').addEventListener('click', exportToCsv);
     document.getElementById('exportPdfBtn').addEventListener('click', exportToPdf);
+    document.getElementById('itemSelect').addEventListener('change', updateToiletPurposeVisibility);
   });
 </script>
 </body>
 </html>
+
