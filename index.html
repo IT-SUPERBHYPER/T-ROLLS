@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -248,10 +247,10 @@
       <input type="number" id="quantityOut" min="0" placeholder="Quantity" />
       <input type="text" id="personOut" placeholder="Person's Name" />
 
-      <!-- Dropdown for Toilet Paper Purpose -->
+      <!-- Dropdown for Toilet Paper Area -->
       <div id="toiletPurposeContainer" style="display: none; width: 200px;">
-        <select id="toiletPurpose">
-          <option value="">Select Purpose</option>
+        <select id="toiletArea">
+          <option value="">Select Area</option>
           <option value="Prayer">Prayer</option>
           <option value="Customer">Customer</option>
           <option value="Team Members">Team Members</option>
@@ -421,7 +420,7 @@
         updateStats();
         updateLog();
         generateReports();
-        updateToiletPurposeVisibility(); // Ensure correct visibility on load
+        updateToiletAreaVisibility(); // Ensure correct visibility on load
     });
   }
 
@@ -459,16 +458,16 @@
       fab: { name: 'First Aid Bandage', stock: 0, in: 0, out: 0 }
     };
     transactionLog = [
-      { timestamp: "2025-07-27T09:50:08.000Z", type: "take", itemKey: "tp", quantity: 12, person: "Jabu", purpose: "Customer" },
-      { timestamp: "2025-07-27T08:07:41.000Z", type: "take", itemKey: "tp", quantity: 12, person: "Bongiwe", purpose: "Team Members" },
+      { timestamp: "2025-07-27T09:50:08.000Z", type: "take", itemKey: "tp", quantity: 12, person: "Jabu", area: "Customer" },
+      { timestamp: "2025-07-27T08:07:41.000Z", type: "take", itemKey: "tp", quantity: 12, person: "Bongiwe", area: "Team Members" },
       { timestamp: "2025-07-27T07:56:10.000Z", type: "take", itemKey: "fap", quantity: 2, person: "Noxolom" },
       { timestamp: "2025-07-26T15:07:50.000Z", type: "take", itemKey: "sw", quantity: 1, person: "Khanyisile" },
       { timestamp: "2025-07-26T12:54:21.000Z", type: "take", itemKey: "fap", quantity: 2, person: "MM2" },
       { timestamp: "2025-07-26T12:26:43.000Z", type: "take", itemKey: "fap", quantity: 2, person: "MM2" },
-      { timestamp: "2025-07-26T12:26:22.000Z", type: "take", itemKey: "tp", quantity: 6, person: "Bongiwe", purpose: "Prayer" },
+      { timestamp: "2025-07-26T12:26:22.000Z", type: "take", itemKey: "tp", quantity: 6, person: "Bongiwe", area: "Prayer" },
       { timestamp: "2025-07-26T08:34:59.000Z", type: "take", itemKey: "fam", quantity: 1, person: "PnS merchandiser" },
-      { timestamp: "2025-07-26T08:13:14.000Z", type: "take", itemKey: "tp", quantity: 12, person: "Bongiwe", purpose: "Main Office" },
-      { timestamp: "2025-07-26T07:46:48.000Z", type: "take", itemKey: "tp", quantity: 6, person: "Abigail", purpose: "Customer" }
+      { timestamp: "2025-07-26T08:13:14.000Z", type: "take", itemKey: "tp", quantity: 12, person: "Bongiwe", area: "Main Office" },
+      { timestamp: "2025-07-26T07:46:48.000Z", type: "take", itemKey: "tp", quantity: 6, person: "Abigail", area: "Customer" }
     ];
   }
 
@@ -508,8 +507,8 @@
           const formattedDate = date.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
           const formattedTime = date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
           let logText = `[${formattedDate}, ${formattedTime}] ${entry.type === 'add' ? 'Added' : 'Taken'} ${entry.quantity} of ${item.name} by ${entry.person}`;
-          if (entry.itemKey === 'tp' && entry.purpose) {
-            logText += ` for ${entry.purpose}`;
+          if (entry.itemKey === 'tp' && entry.area) {
+            logText += ` for ${entry.area}`;
           }
           logText += '.';
           html += `<div class="log-entry">${logText}</div>`;
@@ -578,10 +577,10 @@
       return alert(`Not enough stock of ${items[itemKey].name}. Current stock: ${items[itemKey].stock}`);
     }
 
-    let purpose = '';
+    let area = '';
     if (itemKey === 'tp') {
-      purpose = document.getElementById('toiletPurpose').value;
-      if (!purpose) return alert('Please select a purpose for taking toilet paper.');
+      area = document.getElementById('toiletArea').value;
+      if (!area) return alert('Please select an area for taking toilet paper.');
     }
 
     items[itemKey].stock -= qty;
@@ -596,7 +595,7 @@
     };
 
     if (itemKey === 'tp') {
-      transaction.purpose = purpose;
+      transaction.area = area;
     }
 
     transactionLog.push(transaction);
@@ -611,7 +610,7 @@
     document.getElementById('quantityOut').value = '';
     document.getElementById('personOut').value = '';
     if (itemKey === 'tp') {
-      document.getElementById('toiletPurpose').value = '';
+      document.getElementById('toiletArea').value = '';
     }
   }
 
@@ -721,7 +720,7 @@
     }
 
     csvContent += "\n\nTransaction Log\n";
-    csvContent += "Timestamp,Action,Item,Quantity,Person,Purpose\n";
+    csvContent += "Timestamp,Action,Item,Quantity,Person,Area\n";
 
     [...transactionLog].reverse().forEach(entry => {
       if (entry.type !== 'reset') {
@@ -729,8 +728,8 @@
         const formattedDate = date.toLocaleString('en-GB');
         const action = entry.type === 'add' ? 'Added' : 'Taken';
         const itemName = items[entry.itemKey]?.name || entry.itemKey;
-        const purpose = entry.itemKey === 'tp' && entry.purpose ? entry.purpose : '';
-        csvContent += `"${formattedDate}","${action}","${itemName}",${entry.quantity},"${entry.person}","${purpose}"\n`;
+        const area = entry.itemKey === 'tp' && entry.area ? entry.area : '';
+        csvContent += `"${formattedDate}","${action}","${itemName}",${entry.quantity},"${entry.person}","${area}"\n`;
       }
     });
 
@@ -797,7 +796,7 @@
         const formatted = date.toLocaleString('en-GB');
         let desc = e.type === 'add' ? 'Added' : 'Taken';
         desc += ` ${e.quantity} of ${items[e.itemKey]?.name || e.itemKey} by ${e.person}`;
-        if (e.itemKey === 'tp' && e.purpose) desc += ` for ${e.purpose}`;
+        if (e.itemKey === 'tp' && e.area) desc += ` for ${e.area}`;
         return [formatted, desc];
       });
 
@@ -817,8 +816,8 @@
     doc.save(`inventory_report_${reportType}.pdf`);
   }
 
-  // Show/hide toilet paper purpose dropdown
-  function updateToiletPurposeVisibility() {
+  // Show/hide toilet paper area dropdown
+  function updateToiletAreaVisibility() {
     const itemKey = document.getElementById('itemSelect').value;
     const container = document.getElementById('toiletPurposeContainer');
     container.style.display = itemKey === 'tp' ? 'block' : 'none';
@@ -833,9 +832,8 @@
     document.getElementById('resetBtn').addEventListener('click', resetStats);
     document.getElementById('exportCsvBtn').addEventListener('click', exportToCsv);
     document.getElementById('exportPdfBtn').addEventListener('click', exportToPdf);
-    document.getElementById('itemSelect').addEventListener('change', updateToiletPurposeVisibility);
+    document.getElementById('itemSelect').addEventListener('change', updateToiletAreaVisibility);
   });
 </script>
 </body>
 </html>
-
