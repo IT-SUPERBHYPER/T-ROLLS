@@ -56,7 +56,7 @@
     border-bottom: 2px solid var(--accent-color);
     padding-bottom: 10px;
   }
-  h3 {
+  h3, h4 {
     font-size: 1.4rem;
     color: var(--primary-color);
     margin-bottom: 10px;
@@ -127,9 +127,8 @@
     color: var(--text-color);
     margin: 8px 0;
   }
-  /* New style for visual confirmation */
   .stock-highlight {
-    background-color: #d4edda; /* Light green */
+    background-color: #d4edda;
     transition: background-color 0.5s ease-out;
   }
   #stats {
@@ -172,7 +171,6 @@
     border-radius: 6px;
     border-left: 4px solid var(--accent-color);
   }
-  /* Add scrollbar to log display if it gets too long */
   .item-log-container {
     max-height: 300px;
     overflow-y: auto;
@@ -183,13 +181,6 @@
   }
   .report-section {
     margin-top: 20px;
-  }
-  .report-section h3 {
-    margin-bottom: 10px;
-  }
-  .report-section p {
-    font-size: 1rem;
-    color: var(--text-color);
   }
   .report-summary {
     font-size: 1rem;
@@ -283,7 +274,8 @@
       <h3>Weekly Report</h3>
       <div id="weeklyReport"></div>
       <h3>Monthly Report</h3>
-      <div id="monthlyReport"></div>
+      <div id="currentMonthReport"></div>
+      <div id="lastMonthReport"></div>
     </div>
   </div>
 </div>
@@ -291,16 +283,16 @@
   // JSON Bin API Configuration
   const JSON_BIN_API_URL = 'https://api.jsonbin.io/v3/b/68872a55ae596e708fbcdef8';
   const JSON_BIN_API_KEY = '$2a$10$BqM/s2f2kqZGoB5V14WtWOPOVO5/ccx/wZtBqmQsgeQqh6WMp42We';
-  const RESET_PASSWORD = 'Superb@123'; // Define the password for reset
+  const RESET_PASSWORD = 'Superb@123';
 
-  // Inventory items with initial values - CHANGED TO LET
+  // Inventory items with initial values
   let items = {
     tp: { name: 'Toilet Paper', stock: 0, in: 0, out: 0 },
     sw: { name: 'Saniwipes', stock: 0, in: 0, out: 0 },
     fap: { name: 'First Aid Plasters', stock: 0, in: 0, out: 0 },
     fam: { name: 'First Aid Masks', stock: 0, in: 0, out: 0 },
-    dhs: { name: 'Deep Heat Spray', stock: 0, in: 0, out: 0 }, // New item
-    fab: { name: 'First Aid Bandage', stock: 0, in: 0, out: 0 }  // New item
+    dhs: { name: 'Deep Heat Spray', stock: 0, in: 0, out: 0 },
+    fab: { name: 'First Aid Bandage', stock: 0, in: 0, out: 0 }
   };
   let transactionLog = [];
 
@@ -310,8 +302,8 @@
     sw: 'swStock',
     fap: 'fapStock',
     fam: 'famStock',
-    dhs: 'dhsStock', // New item display ID
-    fab: 'fabStock'  // New item display ID
+    dhs: 'dhsStock',
+    fab: 'fabStock'
   };
 
   // Load data from JSON Bin (and fallback to localStorage)
@@ -319,118 +311,99 @@
     fetch(JSON_BIN_API_URL, {
         method: 'GET',
         headers: {
-            'X-Master-Key': JSON_BIN_API_KEY // JSONBin.io uses X-Master-Key for both read/write with Master Key
+            'X-Master-Key': JSON_BIN_API_KEY
         }
     })
     .then(response => {
         if (!response.ok) {
             if (response.status === 404) {
-                console.warn('JSON Bin not found (404), likely empty or first load. Initializing defaults.');
-                initializeDefaults(); // Load defaults if bin doesn't exist
-                return null; // Prevent further processing for 404
+                console.warn('JSON Bin not found (404), initializing defaults.');
+                initializeDefaults();
+                return null;
             }
             throw new Error(`HTTP error! status: ${response.status}`);
         }
         return response.json();
     })
     .then(data => {
-        if (data && data.record) { // JSONBin.io wraps the actual data in a 'record' field
-            // Reassign items and transactionLog to the loaded data
-            // Merge existing items with new items from loaded data
+        if (data && data.record) {
             for (const key in data.record.inventory) {
-                if (items[key]) { // If item exists in default, update its values
+                if (items[key]) {
                     items[key] = data.record.inventory[key];
-                } else { // If it's a new item from loaded data, add it
+                } else {
                     items[key] = data.record.inventory[key];
                 }
             }
-            // Ensure any new items introduced in the code are present if not in loaded data
-            // (e.e., if you add new items in the HTML but they haven't been saved yet)
             for (const key in items) {
                 if (!data.record.inventory[key]) {
-                    // Item exists in `items` but not in loaded data, initialize it
-                    items[key] = items[key]; // Re-initializes with default values set in `items` declaration
+                    items[key] = { ...items[key] };
                 }
             }
-
-            transactionLog = data.record.transactionLog;
-            console.log('Data successfully loaded from JSON bin.');
+            transactionLog = Array.isArray(data.record.transactionLog) ? data.record.transactionLog : [];
+            console.log('Data loaded from JSON bin.');
         } else {
-             // If data is null (e.g., 404 handled above) or unexpected structure, initialize defaults
-             console.log("No valid data fetched from JSON bin. Displaying initialized defaults.");
-             initializeDefaults(); // Ensure defaults are loaded if bin is empty/malformed
+            console.log("No valid data fetched. Using defaults.");
+            initializeDefaults();
         }
     })
     .catch(error => {
-        console.error('Error loading data from JSON bin:', error);
-        alert('Failed to load data from cloud. Attempting to load from local storage or defaults.');
-        // Fallback to localStorage if cloud load fails
+        console.error('Error loading from JSON bin:', error);
+        alert('Cloud load failed. Loading from local storage or defaults.');
         const saved = localStorage.getItem('inventory');
         if (saved) {
             try {
-                // Ensure items object structure is preserved even from old localStorage
                 const savedItems = JSON.parse(saved);
-                 for (const key in items) {
-                    if (savedItems[key]) {
-                        items[key] = savedItems[key];
-                    }
+                for (const key in items) {
+                    if (savedItems[key]) items[key] = savedItems[key];
                 }
-                // Also add any new items from savedItems that might not be in current `items` structure
                 for (const key in savedItems) {
-                    if (!items[key]) {
-                        items[key] = savedItems[key];
-                    }
+                    if (!items[key]) items[key] = savedItems[key];
                 }
             } catch (e) {
-                console.error('Error parsing inventory from localStorage fallback:', e);
+                console.error('Error parsing inventory from localStorage:', e);
             }
         }
         const savedLog = localStorage.getItem('transactionLog');
         if (savedLog) {
             try {
-                // Attempt to parse old string format or new object format from localStorage
                 const parsedLog = JSON.parse(savedLog);
-                if (parsedLog.length > 0 && typeof parsedLog[0] === 'string') {
-                    // It's the old string format, convert to new format if it exists
+                if (Array.isArray(parsedLog) && parsedLog.length > 0 && typeof parsedLog[0] === 'string') {
                     transactionLog = parsedLog.map(entry => {
                         const match = entry.match(/\[(\d{2}\/\d{2}\/\d{4}), (\d{2}:\d{2}:\d{2})\] (Added|Taken) (\d+) of (.*) by (.*)\./);
                         if (match) {
                             const [day, month, year] = match[1].split('/').map(Number);
                             const [hours, minutes, seconds] = match[2].split(':').map(Number);
                             const date = new Date(year, month - 1, day, hours, minutes, seconds);
-                            const itemFullName = match[5];
                             let itemKey = '';
                             for (const key in items) {
-                                if (items[key].name === itemFullName) {
+                                if (items[key].name === match[5]) {
                                     itemKey = key;
                                     break;
                                 }
                             }
                             return {
                                 timestamp: date.toISOString(),
-                                type: match[3].toLowerCase(), // 'added' -> 'add', 'taken' -> 'take'
-                                itemKey: itemKey,
+                                type: match[3].toLowerCase() === 'added' ? 'add' : 'take',
+                                itemKey,
                                 quantity: Number(match[4]),
                                 person: match[6]
                             };
                         }
-                        return null; // Handle malformed entries
+                        return null;
                     }).filter(entry => entry !== null);
                 } else {
-                    // Assume it's already the new object format
-                    transactionLog = parsedLog;
+                    transactionLog = Array.isArray(parsedLog) ? parsedLog : [];
                 }
             } catch (e) {
-                console.error('Error parsing transactionLog from localStorage fallback:', e);
+                console.error('Error parsing transactionLog from localStorage:', e);
                 transactionLog = [];
             }
         }
-
-        if (!saved && !savedLog && transactionLog.length === 0) { // If no data anywhere, initialize defaults
+        if (!saved && !savedLog && transactionLog.length === 0) {
             initializeDefaults();
         }
     })
-    .finally(() => { // Ensure display is updated regardless of load success
+    .finally(() => {
         updateDisplay();
         updateStats();
         updateLog();
@@ -438,57 +411,40 @@
     });
   }
 
-  // Save data to JSON Bin (and fallback to localStorage)
   function saveData() {
-    const dataToSave = {
-        inventory: items,
-        transactionLog: transactionLog
-    };
-
+    const dataToSave = { inventory: items, transactionLog };
     fetch(JSON_BIN_API_URL, {
-        method: 'PUT', // Use PUT to update the existing bin
+        method: 'PUT',
         headers: {
             'Content-Type': 'application/json',
             'X-Master-Key': JSON_BIN_API_KEY,
-            'X-Bin-Meta': 'false' // For JSONBin.io, to return only the data in the response
+            'X-Bin-Meta': 'false'
         },
         body: JSON.stringify(dataToSave)
     })
     .then(response => {
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
         return response.json();
     })
-    .then(data => {
-        console.log('Data successfully saved to JSON bin:', data);
-        // No longer saving to localStorage as primary, but keep it as a potential fallback
-        // localStorage.setItem('inventory', JSON.stringify(items));
-        // localStorage.setItem('transactionLog', JSON.stringify(transactionLog));
-    })
+    .then(data => console.log('Saved to JSON bin:', data))
     .catch(error => {
-        console.error('Error saving data to JSON bin:', error);
-        alert('Failed to save data to cloud. Saving to local storage as a fallback.');
-        // Fallback to localStorage if cloud save fails
+        console.error('Save failed:', error);
+        alert('Cloud save failed. Saved to local storage.');
         localStorage.setItem('inventory', JSON.stringify(items));
         localStorage.setItem('transactionLog', JSON.stringify(transactionLog));
-        console.log("Data saved to localStorage as a fallback.");
     });
   }
 
   function initializeDefaults() {
-    // Initial data based on user's provided snapshot, with new items initialized to 0
-    items = { // Reassigning the entire object, hence 'let' is needed
+    items = {
       tp: { name: 'Toilet Paper', stock: 6, in: 205, out: 199 },
       sw: { name: 'Saniwipes', stock: 7, in: 12, out: 5 },
       fap: { name: 'First Aid Plasters', stock: 91, in: 103, out: 12 },
       fam: { name: 'First Aid Masks', stock: 95, in: 98, out: 3 },
-      dhs: { name: 'Deep Heat Spray', stock: 0, in: 0, out: 0 }, // New item defaults
-      fab: { name: 'First Aid Bandage', stock: 0, in: 0, out: 0 }  // New item defaults
+      dhs: { name: 'Deep Heat Spray', stock: 0, in: 0, out: 0 },
+      fab: { name: 'First Aid Bandage', stock: 0, in: 0, out: 0 }
     };
-
-    // New structured transaction log entries with ISO timestamps
-    transactionLog = [ // Reassigning the entire array, hence 'let' is needed
+    transactionLog = [
       { timestamp: "2025-07-27T09:50:08.000Z", type: "take", itemKey: "tp", quantity: 12, person: "Jabu" },
       { timestamp: "2025-07-27T08:07:41.000Z", type: "take", itemKey: "tp", quantity: 12, person: "Bongiwe" },
       { timestamp: "2025-07-27T07:56:10.000Z", type: "take", itemKey: "fap", quantity: 2, person: "Noxolom" },
@@ -504,13 +460,8 @@
 
   function updateDisplay() {
     for (const key in items) {
-      // Ensure the display element exists before trying to update it
       const element = document.getElementById(stockDisplayIds[key]);
-      if (element) {
-        element.textContent = items[key].stock;
-      } else {
-        console.warn(`Display element for itemKey: ${key} not found.`);
-      }
+      if (element) element.textContent = items[key].stock;
     }
   }
 
@@ -518,12 +469,7 @@
     let html = '<table><thead><tr><th>Item</th><th>Current Stock</th><th>Total In</th><th>Total Out</th></tr></thead><tbody>';
     for (const key in items) {
       const item = items[key];
-      html += `<tr>
-        <td>${item.name}</td>
-        <td>${item.stock}</td>
-        <td>${item.in}</td>
-        <td>${item.out}</td>
-      </tr>`;
+      html += `<tr><td>${item.name}</td><td>${item.stock}</td><td>${item.in}</td><td>${item.out}</td></tr>`;
     }
     html += '</tbody></table>';
     document.getElementById('stats').innerHTML = html;
@@ -535,33 +481,24 @@
       logDiv.innerHTML = '<p>No transactions yet.</p>';
       return;
     }
-    
     let html = '';
-    
-    // Create a log section for each item
     for (const key in items) {
       const item = items[key];
       const itemLogs = transactionLog.filter(entry => entry.itemKey === key && entry.type !== 'reset');
-      
       if (itemLogs.length > 0) {
         html += `<div class="item-log-title">${item.name} Transactions</div>`;
         html += '<div class="item-log-container">';
-        
-        // Display logs for this item, most recent first
         const reversedLogs = [...itemLogs].reverse();
         for (const entry of reversedLogs) {
           const date = new Date(entry.timestamp);
-          const formattedDate = date.toLocaleDateString('en-GB', {day: '2-digit', month: '2-digit', year: 'numeric'});
-          const formattedTime = date.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit', second: '2-digit'});
+          const formattedDate = date.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+          const formattedTime = date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
           const actionText = entry.type === 'add' ? 'Added' : 'Taken';
           html += `<div class="log-entry">[${formattedDate}, ${formattedTime}] ${actionText} ${entry.quantity} by ${entry.person}.</div>`;
         }
-        
         html += '</div>';
       }
     }
-    
-    // Handle reset entries separately
     const resetEntries = transactionLog.filter(entry => entry.type === 'reset');
     if (resetEntries.length > 0) {
       html += '<div class="item-log-title">System Resets</div>';
@@ -569,114 +506,79 @@
       const reversedResets = [...resetEntries].reverse();
       for (const entry of reversedResets) {
         const date = new Date(entry.timestamp);
-        const formattedDate = date.toLocaleDateString('en-GB', {day: '2-digit', month: '2-digit', year: 'numeric'});
-        const formattedTime = date.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit', second: '2-digit'});
+        const formattedDate = date.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        const formattedTime = date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
         html += `<div class="log-entry">[${formattedDate}, ${formattedTime}] Stats and stock reset by ${entry.person}.</div>`;
       }
       html += '</div>';
     }
-    
     logDiv.innerHTML = html;
   }
 
-  // Function to apply and remove highlight
   function applyHighlight(itemKey) {
     const stockElement = document.getElementById(stockDisplayIds[itemKey]);
     if (stockElement) {
-        stockElement.classList.add('stock-highlight');
-        setTimeout(() => {
-            stockElement.classList.remove('stock-highlight');
-        }, 1000); // Highlight for 1 second
+      stockElement.classList.add('stock-highlight');
+      setTimeout(() => stockElement.classList.remove('stock-highlight'), 1000);
     }
   }
 
-  // Add stock function
   function addStock() {
     const itemKey = document.getElementById('itemSelect').value;
-    const qtyInput = document.getElementById('quantityIn');
-    const personInput = document.getElementById('personIn');
-    const qty = Number(qtyInput.value);
-    const person = personInput.value.trim();
-    if (!qty || qty <= 0) {
-      alert('Please enter a positive quantity to add.');
-      return;
-    }
-    if (person === '') {
-      alert('Please enter the person\'s name adding the stock.');
-      return;
-    }
+    const qty = Number(document.getElementById('quantityIn').value);
+    const person = document.getElementById('personIn').value.trim();
+    if (!qty || qty <= 0) return alert('Please enter a positive quantity to add.');
+    if (!person) return alert('Please enter the person\'s name.');
     items[itemKey].stock += qty;
     items[itemKey].in += qty;
     transactionLog.push({
       timestamp: new Date().toISOString(),
       type: "add",
-      itemKey: itemKey,
+      itemKey,
       quantity: qty,
-      person: person
+      person
     });
-    saveData(); // Save to JSON bin
+    saveData();
     updateDisplay();
     updateStats();
     updateLog();
     generateReports();
-    applyHighlight(itemKey); // Apply highlight
-    qtyInput.value = '';
-    personInput.value = '';
+    applyHighlight(itemKey);
+    document.getElementById('quantityIn').value = '';
+    document.getElementById('personIn').value = '';
   }
 
-  // Take stock function
   function takeStock() {
     const itemKey = document.getElementById('itemSelect').value;
-    const qtyInput = document.getElementById('quantityOut');
-    const personInput = document.getElementById('personOut');
-    const qty = Number(qtyInput.value);
-    const person = personInput.value.trim();
-    if (!qty || qty <= 0) {
-      alert('Please enter a positive quantity to take.');
-      return;
-    }
-    if (person === '') {
-      alert('Please enter the person\'s name taking the stock.');
-      return;
-    }
-    if (items[itemKey].stock < qty) {
-      alert(`Not enough stock of ${items[itemKey].name}. Current stock: ${items[itemKey].stock}`);
-      return;
-    }
+    const qty = Number(document.getElementById('quantityOut').value);
+    const person = document.getElementById('personOut').value.trim();
+    if (!qty || qty <= 0) return alert('Please enter a positive quantity to take.');
+    if (!person) return alert('Please enter the person\'s name.');
+    if (items[itemKey].stock < qty) return alert(`Not enough stock of ${items[itemKey].name}. Current stock: ${items[itemKey].stock}`);
     items[itemKey].stock -= qty;
     items[itemKey].out += qty;
     transactionLog.push({
       timestamp: new Date().toISOString(),
       type: "take",
-      itemKey: itemKey,
+      itemKey,
       quantity: qty,
-      person: person
+      person
     });
-    saveData(); // Save to JSON bin
+    saveData();
     updateDisplay();
     updateStats();
     updateLog();
     generateReports();
-    applyHighlight(itemKey); // Apply highlight
-    qtyInput.value = '';
-    personInput.value = '';
+    applyHighlight(itemKey);
+    document.getElementById('quantityOut').value = '';
+    document.getElementById('personOut').value = '';
   }
 
-  // Reset function with password
   function resetStats() {
     const password = prompt('Please enter the password to reset stats:');
-    if (password === null) { // User clicked cancel
-        return;
-    }
-    if (password !== RESET_PASSWORD) {
-        alert('Incorrect password. Stats reset cancelled.');
-        return;
-    }
-
-    if (!confirm('Are you sure you want to reset all stats and logs? This cannot be undone.')) {
-        return;
-    }
-
+    if (password === null) return;
+    if (password !== RESET_PASSWORD) return alert('Incorrect password. Reset cancelled.');
+    if (!confirm('Are you sure you want to reset all stats and logs? This cannot be undone.')) return;
     for (const key in items) {
       items[key].stock = 0;
       items[key].in = 0;
@@ -687,46 +589,30 @@
       type: "reset",
       itemKey: "all",
       quantity: 0,
-      person: "User (Password Reset)" // Updated person for clarity
+      person: "User (Password Reset)"
     }];
-    saveData(); // Save to JSON bin
+    saveData();
     updateDisplay();
     updateStats();
     updateLog();
     generateReports();
   }
 
-  // Generate reports
-  function generateReports() {
-    updateDailyReport();
-    updateWeeklyReport();
-    updateMonthlyReport();
-  }
-
-  // Helper function to aggregate transactions for a given period
+  // Helper: Aggregate report data
   function getAggregatedReport(filteredLogs) {
     const reportData = {};
     for (const key in items) {
       reportData[key] = { in: 0, out: 0 };
     }
-
     filteredLogs.forEach(entry => {
-      // Exclude 'reset' entries from aggregated reports
       if (entry.type === 'reset') return;
-
       if (entry.itemKey in reportData) {
-        if (entry.type === 'add') {
-          reportData[entry.itemKey].in += entry.quantity;
-        } else if (entry.type === 'take') {
-          reportData[entry.itemKey].out += entry.quantity;
-        }
+        if (entry.type === 'add') reportData[entry.itemKey].in += entry.quantity;
+        else if (entry.type === 'take') reportData[entry.itemKey].out += entry.quantity;
       }
     });
-
     let html = '';
-    let totalIn = 0;
-    let totalOut = 0;
-
+    let totalIn = 0, totalOut = 0;
     for (const key in reportData) {
       const item = items[key];
       if (reportData[key].in > 0 || reportData[key].out > 0) {
@@ -735,81 +621,79 @@
         totalOut += reportData[key].out;
       }
     }
-
-    if (html === '') {
-      return '<p>No transactions for this period.</p>';
-    }
-
-    return `<div class="report-summary">Total Added: ${totalIn}</div>
-            <div class="report-summary">Total Taken: ${totalOut}</div>` + html;
+    if (html === '') return '<p><em>No transactions during this period.</em></p>';
+    return `<div class="report-summary">Total Added: ${totalIn}</div><div class="report-summary">Total Taken: ${totalOut}</div>` + html;
   }
 
-  // Update daily report
+  // Daily Report
   function updateDailyReport() {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-
-    const dailyTransactions = transactionLog.filter(entry => {
-      const entryDate = new Date(entry.timestamp);
-      return entryDate >= today && entryDate < tomorrow;
-    });
-    document.getElementById('dailyReport').innerHTML = getAggregatedReport(dailyTransactions);
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
+    const logs = transactionLog.filter(e => new Date(e.timestamp) >= today && new Date(e.timestamp) < tomorrow);
+    document.getElementById('dailyReport').innerHTML = getAggregatedReport(logs);
   }
 
-  // Update weekly report
+  // Weekly Report
   function updateWeeklyReport() {
     const today = new Date();
-    const firstDayOfWeek = new Date(today.getFullYear(), today.getMonth(), today.getDate() - today.getDay()); // Sunday as first day
+    const firstDayOfWeek = new Date(today.getFullYear(), today.getMonth(), today.getDate() - today.getDay());
     firstDayOfWeek.setHours(0, 0, 0, 0);
-    const lastDayOfWeek = new Date(firstDayOfWeek);
-    lastDayOfWeek.setDate(lastDayOfWeek.getDate() + 7);
-
-    const weeklyTransactions = transactionLog.filter(entry => {
-      const entryDate = new Date(entry.timestamp);
-      return entryDate >= firstDayOfWeek && entryDate < lastDayOfWeek;
-    });
-    document.getElementById('weeklyReport').innerHTML = getAggregatedReport(weeklyTransactions);
+    const lastDayOfWeek = new Date(firstDayOfWeek); lastDayOfWeek.setDate(lastDayOfWeek.getDate() + 7);
+    const logs = transactionLog.filter(e => new Date(e.timestamp) >= firstDayOfWeek && new Date(e.timestamp) < lastDayOfWeek);
+    document.getElementById('weeklyReport').innerHTML = getAggregatedReport(logs);
   }
 
-  // Update monthly report
-  function updateMonthlyReport() {
+  // Current Month Report
+  function updateCurrentMonthReport() {
     const today = new Date();
-    const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-    firstDayOfMonth.setHours(0, 0, 0, 0);
-    const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
-    lastDayOfMonth.setHours(0, 0, 0, 0);
+    const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+    const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+    const logs = transactionLog.filter(e => new Date(e.timestamp) >= firstDay && new Date(e.timestamp) < lastDay);
+    const monthName = firstDay.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+    document.getElementById('currentMonthReport').innerHTML = `
+      <h4>Current Month: ${monthName}</h4>
+      ${getAggregatedReport(logs)}
+    `;
+  }
 
-    const monthlyTransactions = transactionLog.filter(entry => {
-      const entryDate = new Date(entry.timestamp);
-      return entryDate >= firstDayOfMonth && entryDate < lastDayOfMonth;
-    });
-    document.getElementById('monthlyReport').innerHTML = getAggregatedReport(monthlyTransactions);
+  // Last Month Report
+  function updateLastMonthReport() {
+    const today = new Date();
+    const firstDayLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+    const lastDayLastMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+    const logs = transactionLog.filter(e => new Date(e.timestamp) >= firstDayLastMonth && new Date(e.timestamp) < lastDayLastMonth);
+    const monthName = firstDayLastMonth.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+    document.getElementById('lastMonthReport').innerHTML = `
+      <h4>Last Month: ${monthName}</h4>
+      ${getAggregatedReport(logs)}
+    `;
+  }
+
+  // Generate all reports
+  function generateReports() {
+    updateDailyReport();
+    updateWeeklyReport();
+    updateCurrentMonthReport();
+    updateLastMonthReport();
   }
 
   // Export to CSV
   function exportToCsv() {
-    let csvContent = "data:text/csv;charset=utf-8,";
-    csvContent += "Item,Current Stock,Total In,Total Out\n";
+    let csvContent = "data:text/csv;charset=utf-8,Item,Current Stock,Total In,Total Out\n";
     for (const key in items) {
       const item = items[key];
       csvContent += `${item.name},${item.stock},${item.in},${item.out}\n`;
     }
-
-    // Add transaction log
-    csvContent += "\n\nTransaction Log\n";
-    csvContent += "Timestamp,Type,Item,Quantity,Person\n";
-    transactionLog.forEach(entry => {
-      if (entry.type !== 'reset') { // Exclude reset entries from detailed log export
+    csvContent += "\n\nTransaction Log\nTimestamp,Action,Item,Quantity,Person\n";
+    [...transactionLog].reverse().forEach(entry => {
+      if (entry.type !== 'reset') {
         const date = new Date(entry.timestamp);
-        const formattedDate = date.toLocaleString('en-GB', {day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit'});
-        // Ensure that items[entry.itemKey] exists before accessing .name
-        const itemName = items[entry.itemKey] ? items[entry.itemKey].name : entry.itemKey;
-        csvContent += `"${formattedDate}","${entry.type}","${itemName}",${entry.quantity},"${entry.person}"\n`;
+        const formattedDate = date.toLocaleString('en-GB');
+        const itemName = items[entry.itemKey]?.name || entry.itemKey;
+        const action = entry.type === 'add' ? 'Added' : 'Taken';
+        csvContent += `"${formattedDate}","${action}","${itemName}",${entry.quantity},"${entry.person}"\n`;
       }
     });
-
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
@@ -821,115 +705,81 @@
 
   // Export to PDF
   function exportToPdf() {
-    // Ensure jsPDF and autoTable are available
     if (typeof window.jspdf === 'undefined' || typeof window.jspdf.AcroForm === 'undefined') {
-        alert("jsPDF library not loaded. Please check your internet connection or script paths.");
-        return;
+      alert("jsPDF not loaded.");
+      return;
     }
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
-
-    // Check if autoTable function is available
     if (typeof doc.autoTable !== 'function') {
-        alert("jsPDF AutoTable plugin not loaded. Please ensure jspdf.plugin.autotable.min.js is included.");
-        return;
+      alert("jsPDF AutoTable plugin not loaded.");
+      return;
     }
 
-    const reportType = prompt("Enter report type: 'month' for Month to Date, 'year' for Year to Date, or 'life' for Life to Date (default).").toLowerCase();
-
+    const reportType = (prompt("Enter report type: 'month', 'year', or 'life' (default)") || 'life').toLowerCase();
     let filteredTransactions = [];
     let reportTitle = "Reception Stock Inventory Report (Life to Date)";
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const today = new Date(); today.setHours(0, 0, 0, 0);
 
     if (reportType === 'month') {
-        reportTitle = "Reception Stock Inventory Report (Month to Date)";
-        const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-        firstDayOfMonth.setHours(0, 0, 0, 0);
-        filteredTransactions = transactionLog.filter(entry => {
-            const entryDate = new Date(entry.timestamp);
-            return entryDate >= firstDayOfMonth && entryDate <= today; // Include today's transactions
-        });
+      reportTitle = "Reception Stock Inventory Report (Month to Date)";
+      const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+      filteredTransactions = transactionLog.filter(e => new Date(e.timestamp) >= firstDay && new Date(e.timestamp) <= today);
     } else if (reportType === 'year') {
-        reportTitle = "Reception Stock Inventory Report (Year to Date)";
-        const firstDayOfYear = new Date(today.getFullYear(), 0, 1);
-        firstDayOfYear.setHours(0, 0, 0, 0);
-        filteredTransactions = transactionLog.filter(entry => {
-            const entryDate = new Date(entry.timestamp);
-            return entryDate >= firstDayOfYear && entryDate <= today; // Include today's transactions
-        });
-    } else { // 'life' or any other input
-        filteredTransactions = transactionLog; // All transactions
+      reportTitle = "Reception Stock Inventory Report (Year to Date)";
+      const firstDay = new Date(today.getFullYear(), 0, 1);
+      filteredTransactions = transactionLog.filter(e => new Date(e.timestamp) >= firstDay && new Date(e.timestamp) <= today);
+    } else {
+      filteredTransactions = transactionLog;
     }
 
-
-    let y = 10;
     doc.setFontSize(18);
-    doc.text(reportTitle, 10, y);
-    y += 10;
+    doc.text(reportTitle, 10, 10);
 
     doc.setFontSize(14);
-    doc.text("Current Stock Levels:", 10, y);
-    y += 10;
-
-    // Add stock table to PDF
+    doc.text("Current Stock Levels:", 10, 20);
     const stockTableData = Object.values(items).map(item => [item.name, item.stock, item.in, item.out]);
     doc.autoTable({
-      startY: y,
-      head: [['Item', 'Current Stock', 'Total In', 'Total Out']],
+      startY: 30,
+      head: [['Item', 'Stock', 'Total In', 'Total Out']],
       body: stockTableData,
       theme: 'grid',
-      styles: { fontSize: 10, cellPadding: 2, overflow: 'linebreak' },
-      columnStyles: {
-        0: { cellWidth: 40 },
-        1: { cellWidth: 30 },
-        2: { cellWidth: 30 },
-        3: { cellWidth: 30 },
-      },
-      didDrawPage: function(data) {
-        y = data.cursor.y + 10;
-      }
+      styles: { fontSize: 10 },
+      columnStyles: { 0: { cellWidth: 50 }, 1: { cellWidth: 25 }, 2: { cellWidth: 30 }, 3: { cellWidth: 30 } }
     });
 
-    y = doc.autoTable.previous.finalY + 20;
+    const logY = doc.autoTable.previous.finalY + 10;
     doc.setFontSize(14);
-    doc.text("Transaction Log:", 10, y); // Title changed to just "Transaction Log"
-    y += 10;
-
-    // Add filtered transaction log to PDF
-    const logTableData = [...filteredTransactions].reverse().filter(entry => entry.type !== 'reset').map(entry => {
-        const date = new Date(entry.timestamp);
-        const formattedDate = date.toLocaleString('en-GB', {day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit'});
-        const actionText = entry.type === 'add' ? 'Added' : 'Taken';
-        const itemName = items[entry.itemKey] ? items[entry.itemKey].name : entry.itemKey;
-        return [`${formattedDate}`, `${actionText} ${entry.quantity} of ${itemName} by ${entry.person}.`];
-    });
+    doc.text("Transaction Log:", 10, logY);
+    const logTableData = [...filteredTransactions].reverse()
+      .filter(e => e.type !== 'reset')
+      .map(e => {
+        const date = new Date(e.timestamp);
+        const formatted = date.toLocaleString('en-GB');
+        const action = e.type === 'add' ? 'Added' : 'Taken';
+        const name = items[e.itemKey]?.name || e.itemKey;
+        return [formatted, `${action} ${e.quantity} of ${name} by ${e.person}`];
+      });
 
     if (logTableData.length > 0) {
-        doc.autoTable({
-            startY: y,
-            head: [['Timestamp', 'Description']],
-            body: logTableData,
-            theme: 'grid',
-            styles: { fontSize: 8, cellPadding: 1, overflow: 'linebreak' },
-            columnStyles: {
-                0: { cellWidth: 50 },
-                1: { cellWidth: 'auto' },
-            }
-        });
+      doc.autoTable({
+        startY: logY + 10,
+        head: [['Timestamp', 'Description']],
+        body: logTableData,
+        theme: 'grid',
+        styles: { fontSize: 8 },
+        columnStyles: { 0: { cellWidth: 50 }, 1: { cellWidth: 'auto' } }
+      });
     } else {
-        doc.text("No transactions for this period.", 10, y);
+      doc.text("No transactions for this period.", 10, logY + 10);
     }
-
 
     doc.save(`inventory_report_${reportType}.pdf`);
   }
 
-  // Attach event listeners on DOMContentLoaded
+  // Init
   document.addEventListener('DOMContentLoaded', () => {
-    loadData(); // This will now attempt to load from JSON bin first
-
+    loadData();
     document.getElementById('addBtn').addEventListener('click', addStock);
     document.getElementById('takeBtn').addEventListener('click', takeStock);
     document.getElementById('resetBtn').addEventListener('click', resetStats);
