@@ -56,7 +56,7 @@
       border-bottom: 2px solid var(--accent-color);
       padding-bottom: 10px;
     }
-    h3, h4 {
+    h3 {
       font-size: 1.4rem;
       color: var(--primary-color);
       margin-bottom: 10px;
@@ -199,18 +199,6 @@
       border-bottom: 1px solid var(--border-color);
       padding-bottom: 5px;
     }
-    .chart-section {
-      margin-top: 30px;
-      display: flex;
-      flex-wrap: wrap;
-      gap: 20px;
-      justify-content: center;
-    }
-    .chart-container {
-      width: 400px;
-      height: 300px;
-      min-width: 300px;
-    }
     @media (max-width: 600px) {
       .item {
         flex-direction: column;
@@ -226,15 +214,8 @@
       .export-buttons {
         flex-direction: column;
       }
-      .chart-section {
-        flex-direction: column;
-        align-items: center;
-      }
     }
   </style>
-  <!-- Chart.js CDN -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <!-- jsPDF -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.0/jspdf.plugin.autotable.min.js"></script>
 </head>
@@ -254,27 +235,26 @@
           <option value="fab">First Aid Bandage</option>
         </select>
       </div>
-
-      <!-- Add Stock (only shown for TP and SW) -->
-      <div id="addSection" style="display: none;">
-        <div class="item">
-          <label for="quantityIn">Add Stock:</label>
-          <input type="number" id="quantityIn" min="0" placeholder="Quantity" />
-          <input type="text" id="personIn" placeholder="Person's Name" />
-          <button id="addBtn">Add</button>
-        </div>
+      <div class="item">
+        <label for="quantityIn">Add Stock:</label>
+        <input type="number" id="quantityIn" min="0" placeholder="Quantity" />
+        <input type="text" id="personIn" placeholder="Person's Name" />
+        <button id="addBtn">Add</button>
       </div>
-
-      <!-- Use/Record Section (dynamic) -->
-      <div id="useSection">
-        <!-- Will be filled dynamically -->
+      <div class="item">
+        <label for="quantityOut">Take Stock:</label>
+        <input type="number" id="quantityOut" min="0" placeholder="Quantity" />
+        <input type="text" id="personOut" placeholder="Person's Name" />
+        <button id="takeBtn">Taken</button>
       </div>
-
-      <!-- Current Stocks (only TP and SW) -->
       <div class="item current-stocks">
         <label>Current Stocks:</label>
         <div>Toilet Paper: <span id="tpStock">0</span></div>
         <div>Saniwipes: <span id="swStock">0</span></div>
+        <div>First Aid Plasters: <span id="fapStock">0</span></div>
+        <div>First Aid Masks: <span id="famStock">0</span></div>
+        <div>Deep Heat Spray: <span id="dhsStock">0</span></div>
+        <div>First Aid Bandage: <span id="fabStock">0</span></div>
       </div>
     </div>
 
@@ -286,29 +266,19 @@
         <button id="exportPdfBtn">Export to PDF</button>
       </div>
       <div id="stats"></div>
+
       <h3>Transaction Log (By Item)</h3>
       <div id="log"></div>
+
       <div class="report-section">
         <h3>Daily Report</h3>
         <div id="dailyReport"></div>
+
         <h3>Weekly Report</h3>
         <div id="weeklyReport"></div>
-        <h3>Monthly Report</h3>
-        <div id="currentMonthReport"></div>
-        <div id="lastMonthReport"></div>
-      </div>
 
-      <!-- Charts -->
-      <div class="chart-section">
-        <div class="chart-container">
-          <canvas id="stockChart"></canvas>
-        </div>
-        <div class="chart-container">
-          <canvas id="usageChart"></canvas>
-        </div>
-        <div class="chart-container">
-          <canvas id="trendChart"></canvas>
-        </div>
+        <h3>Monthly Report</h3>
+        <div id="monthlyReport"></div>
       </div>
     </div>
   </div>
@@ -319,7 +289,7 @@
     const JSON_BIN_API_KEY = '$2a$10$BqM/s2f2kqZGoB5V14WtWOPOVO5/ccx/wZtBqmQsgeQqh6WMp42We';
     const RESET_PASSWORD = 'Superb@123';
 
-    // Inventory: only TP and SW have stock
+    // Inventory items
     let items = {
       tp: { name: 'Toilet Paper', stock: 0, in: 0, out: 0 },
       sw: { name: 'Saniwipes', stock: 0, in: 0, out: 0 },
@@ -328,47 +298,108 @@
       dhs: { name: 'Deep Heat Spray', stock: 0, in: 0, out: 0 },
       fab: { name: 'First Aid Bandage', stock: 0, in: 0, out: 0 }
     };
+
     let transactionLog = [];
 
-    // Map for stock display
     const stockDisplayIds = {
       tp: 'tpStock',
-      sw: 'swStock'
+      sw: 'swStock',
+      fap: 'fapStock',
+      fam: 'famStock',
+      dhs: 'dhsStock',
+      fab: 'fabStock'
     };
 
-    // Load data
     function loadData() {
       fetch(JSON_BIN_API_URL, {
         method: 'GET',
         headers: { 'X-Master-Key': JSON_BIN_API_KEY }
       })
-      .then(r => r.ok ? r.json() : initializeDefaults())
+      .then(response => {
+        if (!response.ok) {
+          if (response.status === 404) {
+            console.warn('JSON Bin not found. Initializing defaults.');
+            initializeDefaults();
+            return null;
+          }
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response.json();
+      })
       .then(data => {
-        if (data?.record) {
-          if (data.record.inventory.tp) items.tp = data.record.inventory.tp;
-          if (data.record.inventory.sw) items.sw = data.record.inventory.sw;
+        if (data && data.record) {
+          Object.keys(data.record.inventory).forEach(key => {
+            if (items[key]) items[key] = data.record.inventory[key];
+            else items[key] = data.record.inventory[key];
+          });
+          Object.keys(items).forEach(key => {
+            if (!data.record.inventory[key]) {
+              items[key] = { name: items[key].name, stock: 0, in: 0, out: 0 };
+            }
+          });
           transactionLog = Array.isArray(data.record.transactionLog) ? data.record.transactionLog : [];
+        } else {
+          initializeDefaults();
         }
       })
-      .catch(() => {
-        console.warn('Using defaults or localStorage');
+      .catch(error => {
+        console.error('Load error:', error);
+        alert('Cloud load failed. Loading from local storage or defaults.');
         const saved = localStorage.getItem('inventory');
-        if (saved) try { const s = JSON.parse(saved); items.tp = s.tp || items.tp; items.sw = s.sw || items.sw; } catch {}
-        const log = localStorage.getItem('transactionLog');
-        if (log) try { transactionLog = JSON.parse(log); } catch {}
-        if (transactionLog.length === 0) initializeDefaults();
+        if (saved) {
+          try {
+            const parsed = JSON.parse(saved);
+            Object.keys(items).forEach(key => {
+              if (parsed[key]) items[key] = parsed[key];
+            });
+          } catch (e) { console.error('Parse inventory error:', e); }
+        }
+        const savedLog = localStorage.getItem('transactionLog');
+        if (savedLog) {
+          try {
+            const parsed = JSON.parse(savedLog);
+            if (Array.isArray(parsed) && typeof parsed[0] === 'string') {
+              transactionLog = parseLegacyLog(parsed);
+            } else {
+              transactionLog = parsed;
+            }
+          } catch (e) { console.error('Parse log error:', e); }
+        }
+        if (!saved && !savedLog && transactionLog.length === 0) {
+          initializeDefaults();
+        }
       })
       .finally(() => {
         updateDisplay();
         updateStats();
         updateLog();
         generateReports();
-        updateFormSections();
       });
     }
 
+    function parseLegacyLog(entries) {
+      return entries.map(entry => {
+        const match = entry.match(/\[(\d{2}\/\d{2}\/\d{4}), (\d{2}:\d{2}:\d{2})\] (Added|Taken) (\d+) of (.*) by (.*)\./);
+        if (!match) return null;
+        const [day, month, year] = match[1].split('/').map(Number);
+        const [h, m, s] = match[2].split(':').map(Number);
+        const date = new Date(year, month - 1, day, h, m, s);
+        let itemKey = '';
+        Object.keys(items).forEach(k => {
+          if (items[k].name === match[5]) itemKey = k;
+        });
+        return {
+          timestamp: date.toISOString(),
+          type: match[3].toLowerCase() === 'added' ? 'add' : 'take',
+          itemKey,
+          quantity: Number(match[4]),
+          person: match[6]
+        };
+      }).filter(Boolean);
+    }
+
     function saveData() {
-      const data = { inventory: { tp: items.tp, sw: items.sw }, transactionLog };
+      const dataToSave = { inventory: items, transactionLog };
       fetch(JSON_BIN_API_URL, {
         method: 'PUT',
         headers: {
@@ -376,9 +407,17 @@
           'X-Master-Key': JSON_BIN_API_KEY,
           'X-Bin-Meta': 'false'
         },
-        body: JSON.stringify(data)
-      }).catch(() => {
-        localStorage.setItem('inventory', JSON.stringify({ tp: items.tp, sw: items.sw }));
+        body: JSON.stringify(dataToSave)
+      })
+      .then(response => {
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        return response.json();
+      })
+      .then(() => console.log('Saved to JSON Bin.'))
+      .catch(error => {
+        console.error('Save error:', error);
+        alert('Save failed. Saved to local storage.');
+        localStorage.setItem('inventory', JSON.stringify(items));
         localStorage.setItem('transactionLog', JSON.stringify(transactionLog));
       });
     }
@@ -387,27 +426,27 @@
       items = {
         tp: { name: 'Toilet Paper', stock: 6, in: 205, out: 199 },
         sw: { name: 'Saniwipes', stock: 7, in: 12, out: 5 },
-        fap: { name: 'First Aid Plasters', stock: 0, in: 0, out: 0 },
-        fam: { name: 'First Aid Masks', stock: 0, in: 0, out: 0 },
+        fap: { name: 'First Aid Plasters', stock: 91, in: 103, out: 12 },
+        fam: { name: 'First Aid Masks', stock: 95, in: 98, out: 3 },
         dhs: { name: 'Deep Heat Spray', stock: 0, in: 0, out: 0 },
         fab: { name: 'First Aid Bandage', stock: 0, in: 0, out: 0 }
       };
       transactionLog = [
-        { timestamp: "2025-07-27T09:50:08.000Z", type: "take", itemKey: "tp", quantity: 12, person: "Jabu", area: "Customer" },
-        { timestamp: "2025-07-27T08:07:41.000Z", type: "take", itemKey: "tp", quantity: 12, person: "Bongiwe", area: "Team Members" },
-        { timestamp: "2025-07-27T07:56:10.000Z", type: "use", itemKey: "fap", quantity: 2, person: "Noxolom" },
+        { timestamp: "2025-07-27T09:50:08.000Z", type: "take", itemKey: "tp", quantity: 12, person: "Jabu" },
+        { timestamp: "2025-07-27T08:07:41.000Z", type: "take", itemKey: "tp", quantity: 12, person: "Bongiwe" },
+        { timestamp: "2025-07-27T07:56:10.000Z", type: "take", itemKey: "fap", quantity: 2, person: "Noxolom" },
         { timestamp: "2025-07-26T15:07:50.000Z", type: "take", itemKey: "sw", quantity: 1, person: "Khanyisile" },
-        { timestamp: "2025-07-26T12:54:21.000Z", type: "use", itemKey: "fap", quantity: 2, person: "MM2" },
-        { timestamp: "2025-07-26T12:26:43.000Z", type: "use", itemKey: "fap", quantity: 2, person: "MM2" },
-        { timestamp: "2025-07-26T12:26:22.000Z", type: "take", itemKey: "tp", quantity: 6, person: "Bongiwe", area: "Prayer" },
-        { timestamp: "2025-07-26T08:34:59.000Z", type: "use", itemKey: "fam", quantity: 1, person: "PnS merchandiser" },
-        { timestamp: "2025-07-26T08:13:14.000Z", type: "take", itemKey: "tp", quantity: 12, person: "Bongiwe", area: "Main Office" },
-        { timestamp: "2025-07-26T07:46:48.000Z", type: "use", itemKey: "dhs", quantity: 1, person: "Abigail" }
+        { timestamp: "2025-07-26T12:54:21.000Z", type: "take", itemKey: "fap", quantity: 2, person: "MM2" },
+        { timestamp: "2025-07-26T12:26:43.000Z", type: "take", itemKey: "fap", quantity: 2, person: "MM2" },
+        { timestamp: "2025-07-26T12:26:22.000Z", type: "take", itemKey: "tp", quantity: 6, person: "Bongiwe" },
+        { timestamp: "2025-07-26T08:34:59.000Z", type: "take", itemKey: "fam", quantity: 1, person: "PnS merchandiser" },
+        { timestamp: "2025-07-26T08:13:14.000Z", type: "take", itemKey: "tp", quantity: 12, person: "Bongiwe" },
+        { timestamp: "2025-07-26T07:46:48.000Z", type: "take", itemKey: "tp", quantity: 6, person: "Abigail" }
       ];
     }
 
     function updateDisplay() {
-      ['tp', 'sw'].forEach(key => {
+      Object.keys(items).forEach(key => {
         const el = document.getElementById(stockDisplayIds[key]);
         if (el) el.textContent = items[key].stock;
       });
@@ -415,9 +454,8 @@
 
     function updateStats() {
       let html = '<table><thead><tr><th>Item</th><th>Current Stock</th><th>Total In</th><th>Total Out</th></tr></thead><tbody>';
-      ['tp', 'sw'].forEach(key => {
-        const i = items[key];
-        html += `<tr><td>${i.name}</td><td>${i.stock}</td><td>${i.in}</td><td>${i.out}</td></tr>`;
+      Object.values(items).forEach(item => {
+        html += `<tr><td>${item.name}</td><td>${item.stock}</td><td>${item.in}</td><td>${item.out}</td></tr>`;
       });
       html += '</tbody></table>';
       document.getElementById('stats').innerHTML = html;
@@ -426,113 +464,60 @@
     function updateLog() {
       const logDiv = document.getElementById('log');
       let html = '';
-      for (const key in items) {
+
+      Object.keys(items).forEach(key => {
         const item = items[key];
         const logs = transactionLog.filter(e => e.itemKey === key && e.type !== 'reset');
-        if (logs.length === 0) continue;
-        html += `<div class="item-log-title">${item.name} Transactions</div>`;
-        html += '<div class="item-log-container">';
-        [...logs].reverse().forEach(entry => {
-          const date = new Date(entry.timestamp);
-          const fDate = date.toLocaleDateString('en-GB', { day:'2-digit', month:'2-digit', year:'numeric' });
-          const fTime = date.toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
-          let text = `[${fDate}, ${fTime}]`;
-          if (entry.type === 'add') {
-            text += ` Added ${entry.quantity} by ${entry.person}.`;
-          } else if (entry.type === 'take') {
-            text += ` Taken ${entry.quantity} by ${entry.person}`;
-            if (entry.itemKey === 'tp' && entry.area) text += ` for ${entry.area}`;
-            text += '.';
-          } else if (entry.type === 'use') {
-            text += ` Used ${entry.quantity} of ${item.name} by ${entry.person}.`;
-          }
-          html += `<div class="log-entry">${text}</div>`;
+        if (logs.length > 0) {
+          html += `<div class="item-log-title">${item.name}</div><div class="item-log-container">`;
+          [...logs].reverse().forEach(e => {
+            const date = new Date(e.timestamp);
+            const fDate = date.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+            const fTime = date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            const action = e.type === 'add' ? 'Added' : 'Taken';
+            html += `<div class="log-entry">[${fDate}, ${fTime}] ${action} ${e.quantity} by ${e.person}.</div>`;
+          });
+          html += '</div>';
+        }
+      });
+
+      const resets = transactionLog.filter(e => e.type === 'reset');
+      if (resets.length > 0) {
+        html += `<div class="item-log-title">System Resets</div><div class="item-log-container">`;
+        [...resets].reverse().forEach(e => {
+          const date = new Date(e.timestamp);
+          const fDate = date.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+          const fTime = date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+          html += `<div class="log-entry">[${fDate}, ${fTime}] Stats reset by ${e.person}.</div>`;
         });
         html += '</div>';
       }
-      logDiv.innerHTML = html;
+
+      logDiv.innerHTML = html || '<p>No transactions yet.</p>';
     }
 
-    function applyHighlight(key) {
-      const el = document.getElementById(stockDisplayIds[key]);
+    function applyHighlight(itemKey) {
+      const el = document.getElementById(stockDisplayIds[itemKey]);
       if (el) {
         el.classList.add('stock-highlight');
         setTimeout(() => el.classList.remove('stock-highlight'), 1000);
       }
     }
 
-    // Dynamic form rendering
-    function updateFormSections() {
-      const itemKey = document.getElementById('itemSelect').value;
-      const useSection = document.getElementById('useSection');
-      const addSection = document.getElementById('addSection');
-
-      addSection.style.display = ['tp', 'sw'].includes(itemKey) ? 'block' : 'none';
-
-      let html = '';
-
-      if (itemKey === 'tp') {
-        html = `
-          <label for="quantityOut">Take Stock:</label>
-          <input type="number" id="quantityOut" min="1" placeholder="Quantity" />
-          <input type="text" id="personOut" placeholder="Person's Name" />
-          <div style="width:200px;">
-            <select id="toiletArea">
-              <option value="">Select Area</option>
-              <option value="Prayer">Prayer</option>
-              <option value="Customer">Customer</option>
-              <option value="Team Members">Team Members</option>
-              <option value="Main Office">Main Office</option>
-            </select>
-          </div>
-          <button id="takeBtn">Taken</button>
-        `;
-      } else if (itemKey === 'sw') {
-        html = `
-          <label for="quantityOut">Take Stock:</label>
-          <input type="number" id="quantityOut" min="1" placeholder="Quantity" />
-          <input type="text" id="personOut" placeholder="Person's Name" />
-          <button id="takeBtn">Taken</button>
-        `;
-      } else {
-        html = `
-          <label for="quantityUse">Quantity Used:</label>
-          <input type="number" id="quantityUse" min="1" placeholder="Quantity" />
-          <input type="text" id="personUse" placeholder="Person's Name" />
-          <button id="useBtn">Record Use</button>
-        `;
-      }
-
-      useSection.innerHTML = html;
-
-      if (itemKey === 'tp' || itemKey === 'sw') {
-        document.getElementById('takeBtn')?.addEventListener('click', takeStock);
-      } else {
-        document.getElementById('useBtn')?.addEventListener('click', recordUse);
-      }
-
-      if (['tp', 'sw'].includes(itemKey)) {
-        const btn = document.getElementById('addBtn');
-        btn?.replaceWith(btn.cloneNode(true));
-        document.getElementById('addBtn')?.addEventListener('click', addStock);
-      }
-    }
-
     function addStock() {
-      const key = document.getElementById('itemSelect').value;
-      if (!['tp', 'sw'].includes(key)) return alert('Stock cannot be added for this item.');
+      const itemKey = document.getElementById('itemSelect').value;
       const qty = Number(document.getElementById('quantityIn').value);
       const person = document.getElementById('personIn').value.trim();
+
       if (!qty || qty <= 0) return alert('Enter a positive quantity.');
-      if (!person) return alert('Enter person\'s name.');
+      if (!person) return alert('Enter person’s name.');
 
-      items[key].stock += qty;
-      items[key].in += qty;
-
+      items[itemKey].stock += qty;
+      items[itemKey].in += qty;
       transactionLog.push({
         timestamp: new Date().toISOString(),
         type: 'add',
-        itemKey: key,
+        itemKey,
         quantity: qty,
         person
       });
@@ -542,381 +527,265 @@
       updateStats();
       updateLog();
       generateReports();
-      renderCharts();
-      applyHighlight(key);
-
+      applyHighlight(itemKey);
       document.getElementById('quantityIn').value = '';
       document.getElementById('personIn').value = '';
     }
 
     function takeStock() {
-      const key = document.getElementById('itemSelect').value;
+      const itemKey = document.getElementById('itemSelect').value;
       const qty = Number(document.getElementById('quantityOut').value);
       const person = document.getElementById('personOut').value.trim();
-      const area = key === 'tp' ? document.getElementById('toiletArea').value : '';
 
-      if (!qty || qty <= 0) return alert('Enter quantity.');
-      if (!person) return alert('Enter person\'s name.');
-      if (key === 'tp' && !area) return alert('Select area for Toilet Paper.');
-      if (items[key].stock < qty) return alert(`Not enough ${items[key].name}.`);
+      if (!qty || qty <= 0) return alert('Enter a positive quantity.');
+      if (!person) return alert('Enter person’s name.');
+      if (items[itemKey].stock < qty) return alert(`Not enough ${items[itemKey].name}.`);
 
-      items[key].stock -= qty;
-      items[key].out += qty;
-
-      const entry = {
-        timestamp: new Date().toISOString(),
-        type: 'take',
-        itemKey: key,
-        quantity: qty,
-        person
-      };
-      if (key === 'tp') entry.area = area;
-
-      transactionLog.push(entry);
-      saveData();
-      updateDisplay();
-      updateStats();
-      updateLog();
-      generateReports();
-      renderCharts();
-      applyHighlight(key);
-
-      document.getElementById('quantityOut').value = '';
-      document.getElementById('personOut').value = '';
-      if (key === 'tp') document.getElementById('toiletArea').value = '';
-    }
-
-    function recordUse() {
-      const key = document.getElementById('itemSelect').value;
-      const qty = Number(document.getElementById('quantityUse').value);
-      const person = document.getElementById('personUse').value.trim();
-      if (!qty || qty <= 0) return alert('Enter a positive quantity used.');
-      if (!person) return alert('Enter person\'s name.');
-
+      items[itemKey].stock -= qty;
+      items[itemKey].out += qty;
       transactionLog.push({
         timestamp: new Date().toISOString(),
-        type: 'use',
-        itemKey: key,
+        type: 'take',
+        itemKey,
         quantity: qty,
         person
       });
 
       saveData();
+      updateDisplay();
+      updateStats();
       updateLog();
       generateReports();
-      renderCharts();
-
-      document.getElementById('quantityUse').value = '';
-      document.getElementById('personUse').value = '';
+      applyHighlight(itemKey);
+      document.getElementById('quantityOut').value = '';
+      document.getElementById('personOut').value = '';
     }
 
     function resetStats() {
-      const p = prompt('Password:');
-      if (p !== RESET_PASSWORD) return alert('Incorrect password.');
-      if (!confirm('Reset all?')) return;
+      const password = prompt('Enter password to reset:');
+      if (password === null) return;
+      if (password !== RESET_PASSWORD) return alert('Incorrect password.');
+      if (!confirm('Reset all stats? This cannot be undone.')) return;
 
-      items.tp = { name: 'Toilet Paper', stock: 0, in: 0, out: 0 };
-      items.sw = { name: 'Saniwipes', stock: 0, in: 0, out: 0 };
-      transactionLog = [{ timestamp: new Date().toISOString(), type: 'reset', person: 'Admin' }];
+      Object.keys(items).forEach(key => {
+        items[key].stock = 0;
+        items[key].in = 0;
+        items[key].out = 0;
+      });
+      transactionLog = [{
+        timestamp: new Date().toISOString(),
+        type: 'reset',
+        itemKey: 'all',
+        quantity: 0,
+        person: 'User (Password Reset)'
+      }];
 
       saveData();
       updateDisplay();
       updateStats();
       updateLog();
       generateReports();
-      renderCharts();
-    }
-
-    // Helper: Aggregate report data
-    function getAggregatedReport(filteredLogs) {
-      const reportData = { tp: { in: 0, out: 0 }, sw: { in: 0, out: 0 } };
-      filteredLogs.forEach(entry => {
-        if (entry.type === 'add' && ['tp', 'sw'].includes(entry.itemKey)) {
-          reportData[entry.itemKey].in += entry.quantity;
-        } else if (entry.type === 'take' && ['tp', 'sw'].includes(entry.itemKey)) {
-          reportData[entry.itemKey].out += entry.quantity;
-        }
-      });
-
-      let html = '';
-      let totalIn = 0, totalOut = 0;
-      for (const key of ['tp', 'sw']) {
-        const item = items[key];
-        if (reportData[key].in > 0 || reportData[key].out > 0) {
-          html += `<div class="report-summary-item">${item.name}: Added ${reportData[key].in}, Taken ${reportData[key].out}</div>`;
-          totalIn += reportData[key].in;
-          totalOut += reportData[key].out;
-        }
-      }
-      if (html === '') return '<p><em>No transactions during this period.</em></p>';
-      return `<div class="report-summary">Total Added: ${totalIn}</div><div class="report-summary">Total Taken: ${totalOut}</div>` + html;
-    }
-
-    function updateDailyReport() {
-      const today = new Date(); today.setHours(0, 0, 0, 0);
-      const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
-      const logs = transactionLog.filter(e => new Date(e.timestamp) >= today && new Date(e.timestamp) < tomorrow);
-      document.getElementById('dailyReport').innerHTML = getAggregatedReport(logs);
-    }
-
-    function updateWeeklyReport() {
-      const today = new Date();
-      const firstDayOfWeek = new Date(today.getFullYear(), today.getMonth(), today.getDate() - today.getDay());
-      firstDayOfWeek.setHours(0, 0, 0, 0);
-      const lastDayOfWeek = new Date(firstDayOfWeek);
-      lastDayOfWeek.setDate(lastDayOfWeek.getDate() + 7);
-      const logs = transactionLog.filter(e => new Date(e.timestamp) >= firstDayOfWeek && new Date(e.timestamp) < lastDayOfWeek);
-      document.getElementById('weeklyReport').innerHTML = getAggregatedReport(logs);
-    }
-
-    function updateCurrentMonthReport() {
-      const today = new Date();
-      const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
-      const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 1);
-      const logs = transactionLog.filter(e => new Date(e.timestamp) >= firstDay && new Date(e.timestamp) < lastDay);
-      const monthName = firstDay.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
-      document.getElementById('currentMonthReport').innerHTML = `
-        <h4>Current Month: ${monthName}</h4>
-        ${getAggregatedReport(logs)}
-      `;
-    }
-
-    function updateLastMonthReport() {
-      const today = new Date();
-      const firstDayLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-      const lastDayLastMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-      const logs = transactionLog.filter(e => new Date(e.timestamp) >= firstDayLastMonth && new Date(e.timestamp) < lastDayLastMonth);
-      const monthName = firstDayLastMonth.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
-      document.getElementById('lastMonthReport').innerHTML = `
-        <h4>Last Month: ${monthName}</h4>
-        ${getAggregatedReport(logs)}
-      `;
     }
 
     function generateReports() {
       updateDailyReport();
       updateWeeklyReport();
-      updateCurrentMonthReport();
-      updateLastMonthReport();
-      renderCharts();
+      updateMonthlyReport();
     }
 
-    // --- CHARTS ---
-    let stockChart = null;
-    let usageChart = null;
-    let trendChart = null;
+    function getAggregatedReport(filteredLogs) {
+      const reportData = {};
+      let totalIn = 0;
+      let totalOut = 0;
 
-    function renderCharts() {
-      if (stockChart) stockChart.destroy();
-      if (usageChart) usageChart.destroy();
-      if (trendChart) trendChart.destroy();
+      Object.keys(items).forEach(key => {
+        reportData[key] = { in: 0, out: 0 };
+      });
 
-      const ctx1 = document.getElementById('stockChart').getContext('2d');
-      const ctx2 = document.getElementById('usageChart').getContext('2d');
-      const ctx3 = document.getElementById('trendChart').getContext('2d');
+      filteredLogs.forEach(entry => {
+        if (entry.type === 'reset') return;
+        const key = entry.itemKey;
+        if (!reportData[key]) return;
 
-      // 1. Stock In vs Out
-      const labelsStock = ['Toilet Paper', 'Saniwipes'];
-      const dataIn = ['tp', 'sw'].map(key => items[key].in);
-      const dataOut = ['tp', 'sw'].map(key => items[key].out);
-
-      stockChart = new Chart(ctx1, {
-        type: 'bar',
-        data: {
-          labels: labelsStock,
-          datasets: [
-            { label: 'Added (In)', data: dataIn, backgroundColor: '#2ecc71', borderWidth: 1 },
-            { label: 'Taken (Out)', data: dataOut, backgroundColor: '#3498db', borderWidth: 1 }
-          ]
-        },
-        options: {
-          responsive: true,
-          plugins: {
-            legend: { position: 'top' },
-            title: { display: true, text: 'Stock In vs Out' }
-          },
-          scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
+        if (entry.type === 'add') {
+          reportData[key].in += entry.quantity;
+          totalIn += entry.quantity;
+        } else if (entry.type === 'take') {
+          reportData[key].out += entry.quantity;
+          totalOut += entry.quantity;
         }
       });
 
-      // 2. Medical Usage
-      const medicalItems = ['fap', 'fam', 'dhs', 'fab'];
-      const medicalLabels = ['Plasters', 'Masks', 'Heat Spray', 'Bandage'];
-      const medicalQuantities = medicalItems.map(key => {
-        return transactionLog
-          .filter(e => e.itemKey === key && e.type === 'use')
-          .reduce((sum, e) => sum + e.quantity, 0);
-      });
-
-      const filteredLabels = [];
-      const filteredData = [];
-      medicalLabels.forEach((label, i) => {
-        if (medicalQuantities[i] > 0) {
-          filteredLabels.push(label);
-          filteredData.push(medicalQuantities[i]);
-        }
-      });
-
-      usageChart = new Chart(ctx2, {
-        type: 'doughnut',
-        data: {
-          labels: filteredLabels.length ? filteredLabels : ['No Usage'],
-          datasets: [{
-            data: filteredData.length ? filteredData : [1],
-            backgroundColor: ['#e74c3c', '#f39c12', '#9b59b6', '#1abc9c'],
-            hoverOffset: 6
-          }]
-        },
-        options: {
-          responsive: true,
-          plugins: {
-            legend: { position: 'right' },
-            title: { display: true, text: 'Medical Item Usage' }
+      let html = '';
+      if (totalIn > 0 || totalOut > 0) {
+        html += `<div class="report-summary">Total Added: ${totalIn}</div>`;
+        html += `<div class="report-summary">Total Taken: ${totalOut}</div>`;
+        Object.keys(items).forEach(key => {
+          const item = items[key];
+          const inQty = reportData[key].in;
+          const outQty = reportData[key].out;
+          if (inQty > 0 || outQty > 0) {
+            html += `<div class="report-summary-item">${item.name}: Added ${inQty}, Taken ${outQty}</div>`;
           }
-        }
-      });
+        });
+      } else {
+        html = '<p>No transactions for this period.</p>';
+      }
 
-      // 3. Daily Trend for TP and SW (Last 7 Days) - Based on "take" actions
-      const today = new Date();
-      const dates = Array.from({ length: 7 }, (_, i) => {
-        const d = new Date(today);
-        d.setDate(d.getDate() - (6 - i));
-        return d;
-      });
-      const labels = dates.map(d => d.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' }));
-
-      // Filter logs for "take" actions
-      const tpLogs = transactionLog.filter(e => e.type === 'take' && e.itemKey === 'tp');
-      const swLogs = transactionLog.filter(e => e.type === 'take' && e.itemKey === 'sw');
-
-      // Count daily taken quantities
-      const tpData = dates.map(date => {
-        const start = new Date(date);
-        start.setHours(0, 0, 0, 0);
-        const end = new Date(start);
-        end.setDate(end.getDate() + 1);
-        return tpLogs
-          .filter(e => new Date(e.timestamp) >= start && new Date(e.timestamp) < end)
-          .reduce((sum, e) => sum + e.quantity, 0);
-      });
-
-      const swData = dates.map(date => {
-        const start = new Date(date);
-        start.setHours(0, 0, 0, 0);
-        const end = new Date(start);
-        end.setDate(end.getDate() + 1);
-        return swLogs
-          .filter(e => new Date(e.timestamp) >= start && new Date(e.timestamp) < end)
-          .reduce((sum, e) => sum + e.quantity, 0);
-      });
-
-      trendChart = new Chart(ctx3, {
-        type: 'line',
-        data: {
-          labels,
-          datasets: [
-            {
-              label: 'Toilet Paper Taken',
-              data: tpData,
-              borderColor: '#2ecc71',
-              backgroundColor: 'rgba(46, 204, 113, 0.2)',
-              tension: 0.4,
-              pointBackgroundColor: '#2ecc71'
-            },
-            {
-              label: 'Saniwipes Taken',
-              data: swData,
-              borderColor: '#3498db',
-              backgroundColor: 'rgba(52, 152, 219, 0.2)',
-              tension: 0.4,
-              pointBackgroundColor: '#3498db'
-            }
-          ]
-        },
-        options: {
-          responsive: true,
-          plugins: {
-            legend: { position: 'top' },
-            title: { display: true, text: 'Stock Taken Trend (Last 7 Days)' }
-          },
-          scales: {
-            y: {
-              beginAtZero: true,
-              ticks: { stepSize: 1 },
-              title: { display: true, text: 'Quantity Taken' }
-            },
-            x: {
-              title: { display: true, text: 'Date' }
-            }
-          }
-        }
-      });
+      return html;
     }
 
-    // Export to CSV
+    function updateDailyReport() {
+      const now = new Date();
+      const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0));
+      const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 23, 59, 59));
+      const logs = transactionLog.filter(e => {
+        const d = new Date(e.timestamp);
+        return d >= start && d <= end;
+      });
+      document.getElementById('dailyReport').innerHTML = getAggregatedReport(logs);
+    }
+
+    function updateWeeklyReport() {
+      const now = new Date();
+      const day = now.getUTCDay();
+      const diff = now.getUTCDate() - day;
+      const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), diff, 0, 0, 0));
+      const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), diff + 6, 23, 59, 59));
+      const logs = transactionLog.filter(e => {
+        const d = new Date(e.timestamp);
+        return d >= start && d <= end;
+      });
+      document.getElementById('weeklyReport').innerHTML = getAggregatedReport(logs);
+    }
+
+    function updateMonthlyReport() {
+      const now = new Date();
+      const year = now.getUTCFullYear();
+      const month = now.getUTCMonth();
+      const start = new Date(Date.UTC(year, month, 1, 0, 0, 0));
+      const end = new Date(Date.UTC(year, month + 1, 0, 23, 59, 59));
+      const logs = transactionLog.filter(e => {
+        const d = new Date(e.timestamp);
+        return d >= start && d <= end;
+      });
+      document.getElementById('monthlyReport').innerHTML = getAggregatedReport(logs);
+    }
+
     function exportToCsv() {
+      const reportType = prompt("Export: 'month' for Month-to-Date, 'year' for Year-to-Date, 'life' for all.").toLowerCase();
+      const now = new Date();
+      const todayEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 23, 59, 59));
+      let filtered = [];
+
+      if (reportType === 'month') {
+        const first = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+        filtered = transactionLog.filter(e => new Date(e.timestamp) >= first && new Date(e.timestamp) <= todayEnd && e.type !== 'reset');
+      } else if (reportType === 'year') {
+        const first = new Date(Date.UTC(now.getUTCFullYear(), 0, 1));
+        filtered = transactionLog.filter(e => new Date(e.timestamp) >= first && new Date(e.timestamp) <= todayEnd && e.type !== 'reset');
+      } else {
+        filtered = transactionLog.filter(e => e.type !== 'reset');
+      }
+
       let csv = "data:text/csv;charset=utf-8,Item,Current Stock,Total In,Total Out\n";
-      ['tp','sw'].forEach(k => {
-        const i = items[k];
-        csv += `${i.name},${i.stock},${i.in},${i.out}\n`;
+      Object.values(items).forEach(i => csv += `${i.name},${i.stock},${i.in},${i.out}\n`);
+      csv += "\n\nTimestamp,Action,Item,Quantity,Person\n";
+      [...filtered].reverse().forEach(e => {
+        const d = new Date(e.timestamp).toLocaleString('en-GB');
+        const a = e.type === 'add' ? 'Added' : 'Taken';
+        const n = items[e.itemKey]?.name || e.itemKey;
+        csv += `"${d}","${a}","${n}",${e.quantity},"${e.person}"\n`;
       });
-      csv += "\n\nTransaction Log\nTimestamp,Action,Item,Quantity,Person,Area\n";
-      [...transactionLog].reverse().forEach(e => {
-        if (e.type === 'reset') return;
-        const t = new Date(e.timestamp).toLocaleString('en-GB');
-        let action, item, qty = '', person = e.person, area = '';
-        if (e.type === 'add') { action = 'Added'; item = e.itemKey === 'tp' ? 'Toilet Paper' : 'Saniwipes'; qty = e.quantity; }
-        else if (e.type === 'take') { action = 'Taken'; item = items[e.itemKey].name; qty = e.quantity; if (e.itemKey === 'tp') area = e.area; }
-        else if (e.type === 'use') { action = 'Used'; item = items[e.itemKey].name; qty = e.quantity; }
-        csv += `"${t}","${action}","${item}","${qty}","${person}","${area}"\n`;
-      });
-      const a = document.createElement("a");
-      a.href = encodeURI(csv);
-      a.download = "inventory_report.csv";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+
+      const link = document.createElement("a");
+      link.href = encodeURI(csv);
+      link.download = `inventory_report_${reportType}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
     }
 
-    // Export to PDF
     function exportToPdf() {
-      if (!window.jspdf) return alert("jsPDF not loaded.");
+      if (typeof window.jspdf === 'undefined') return alert("jsPDF not loaded.");
       const { jsPDF } = window.jspdf;
+      if (typeof jsPDF().autoTable === 'undefined') return alert("AutoTable plugin not loaded.");
+
+      const reportType = prompt("Report: 'month' for MTD, 'year' for YTD, 'life' for all.").toLowerCase();
+      const now = new Date();
+      const todayEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 23, 59, 59));
+      let filteredTransactions = [];
+      let reportTitle = "Reception Stock Inventory Report (Life to Date)";
+
+      if (reportType === 'month') {
+        reportTitle = "Reception Stock Inventory Report (Month to Date)";
+        const first = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+        filteredTransactions = transactionLog.filter(e => {
+          const d = new Date(e.timestamp);
+          return d >= first && d <= todayEnd && e.type !== 'reset';
+        });
+      } else if (reportType === 'year') {
+        reportTitle = "Reception Stock Inventory Report (Year to Date)";
+        const first = new Date(Date.UTC(now.getUTCFullYear(), 0, 1));
+        filteredTransactions = transactionLog.filter(e => {
+          const d = new Date(e.timestamp);
+          return d >= first && d <= todayEnd && e.type !== 'reset';
+        });
+      } else {
+        filteredTransactions = transactionLog.filter(e => e.type !== 'reset');
+      }
+
       const doc = new jsPDF();
-      if (!doc.autoTable) return alert("AutoTable not loaded.");
-
       doc.setFontSize(18);
-      doc.text("Reception Stock Inventory Report", 10, 10);
-      doc.setFontSize(12);
-      doc.text("Generated: " + new Date().toLocaleString(), 10, 20);
+      doc.text(reportTitle, 10, 10);
 
-      // Stats Table
+      doc.setFontSize(14);
+      doc.text("Current Stock Levels:", 10, 25);
+
+      const stockData = Object.values(items).map(i => [i.name, i.stock, i.in, i.out]);
       doc.autoTable({
         startY: 30,
-        head: [['Item', 'Stock', 'In', 'Out']],
-        body: [
-          ['Toilet Paper', items.tp.stock, items.tp.in, items.tp.out],
-          ['Saniwipes', items.sw.stock, items.sw.in, items.sw.out]
-        ],
-        theme: 'grid'
+        head: [['Item', 'Current Stock', 'Total In', 'Total Out']],
+        body: stockData,
+        theme: 'grid',
+        styles: { fontSize: 10 },
+        columnStyles: { 0: { cellWidth: 40 }, 1: { cellWidth: 30 }, 2: { cellWidth: 30 }, 3: { cellWidth: 30 } }
       });
 
-      // Charts note
-      const finalY = doc.autoTable.previous ? doc.autoTable.previous.finalY + 10 : 80;
-      doc.text("Charts included in web version.", 10, finalY);
-      doc.text("Open in browser to view full charts.", 10, finalY + 10);
+      const logY = doc.autoTable.previous.finalY + 10;
+      doc.setFontSize(14);
+      doc.text("Transaction Log:", 10, logY);
 
-      doc.save("inventory_report.pdf");
+      const logData = [...filteredTransactions].reverse().map(e => {
+        const d = new Date(e.timestamp).toLocaleString('en-GB');
+        const a = e.type === 'add' ? 'Added' : 'Taken';
+        const n = items[e.itemKey]?.name || e.itemKey;
+        return [d, `${a} ${e.quantity} of ${n} by ${e.person}.`];
+      });
+
+      if (logData.length > 0) {
+        doc.autoTable({
+          startY: logY + 5,
+          head: [['Timestamp', 'Description']],
+          body: logData,
+          theme: 'grid',
+          styles: { fontSize: 8 },
+          columnStyles: { 0: { cellWidth: 50 }, 1: { cellWidth: 'auto' } }
+        });
+      } else {
+        doc.text("No transactions for this period.", 10, logY + 10);
+      }
+
+      doc.save(`inventory_report_${reportType}.pdf`);
     }
 
-    // Init
     document.addEventListener('DOMContentLoaded', () => {
       loadData();
-      document.getElementById('itemSelect').addEventListener('change', updateFormSections);
+      document.getElementById('addBtn').addEventListener('click', addStock);
+      document.getElementById('takeBtn').addEventListener('click', takeStock);
       document.getElementById('resetBtn').addEventListener('click', resetStats);
       document.getElementById('exportCsvBtn').addEventListener('click', exportToCsv);
       document.getElementById('exportPdfBtn').addEventListener('click', exportToPdf);
-      updateFormSections();
     });
   </script>
 </body>
