@@ -73,7 +73,7 @@
       width: 150px;
       font-size: 1.1rem;
     }
-    select, input[type="text"], input[type="number"] {
+    select, input[type="text"], input[type="number"], input[type="date"] {
       padding: 10px;
       border: 1px solid var(--border-color);
       border-radius: 8px;
@@ -113,6 +113,7 @@
       margin-top: 20px;
       display: flex;
       gap: 10px;
+      flex-wrap: wrap;
     }
     .export-buttons button {
       flex: 1;
@@ -231,12 +232,56 @@
       border-radius: 6px;
       border: 1px dashed #bdc3c7;
     }
+    .modal {
+      display: none;
+      position: fixed;
+      z-index: 1000;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      overflow: auto;
+      background-color: rgba(0,0,0,0.4);
+    }
+    .modal-content {
+      background-color: #fefefe;
+      margin: 15% auto;
+      padding: 20px;
+      border: 1px solid #888;
+      width: 80%;
+      max-width: 500px;
+      border-radius: 8px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    }
+    .close {
+      color: #aaa;
+      float: right;
+      font-size: 28px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    .close:hover,
+    .close:focus {
+      color: black;
+      text-decoration: none;
+    }
+    .export-options-modal label {
+      display: block;
+      margin: 10px 0;
+    }
+    .modal-buttons {
+      margin-top: 20px;
+      text-align: right;
+    }
+    .modal-buttons button {
+      margin-left: 10px;
+    }
     @media (max-width: 600px) {
       .item {
         flex-direction: column;
         align-items: flex-start;
       }
-      select, input[type="text"], input[type="number"] {
+      select, input[type="text"], input[type="number"], input[type="date"] {
         width: 100%;
         margin-bottom: 10px;
       }
@@ -347,6 +392,28 @@
           <canvas id="trendChart"></canvas>
           <div id="avgUsage" class="avg-usage" style="display:none;"></div>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Export Modal -->
+  <div id="exportModal" class="modal">
+    <div class="modal-content">
+      <span class="close">&times;</span>
+      <h3>Export Options</h3>
+      <div class="export-options-modal">
+        <label><input type="radio" name="exportRange" value="all" checked> All Data</label>
+        <label><input type="radio" name="exportRange" value="mtd"> Month to Date</label>
+        <label><input type="radio" name="exportRange" value="ltd"> Life to Date</label>
+        <label><input type="radio" name="exportRange" value="custom"> Custom Range</label>
+        <div id="customDateRange" style="display:none; margin-top:10px;">
+          <label>From: <input type="date" id="exportStartDate"></label>
+          <label>To: <input type="date" id="exportEndDate"></label>
+        </div>
+      </div>
+      <div class="modal-buttons">
+        <button id="confirmExportBtn">Export</button>
+        <button id="cancelExportBtn">Cancel</button>
       </div>
     </div>
   </div>
@@ -836,16 +903,6 @@
           .reduce((sum, e) => sum + e.quantity, 0);
       });
 
-      // Restock points
-      const restockX = addLogs.map(e => {
-        const d = new Date(e.timestamp);
-        const dayDiff = Math.floor((d - start) / (1000 * 60 * 60 * 24));
-        return dayDiff >= 0 && dayDiff < labels.length ? dayDiff : null;
-      }).filter(n => n !== null);
-
-      const tpRestockY = restockX.map(i => tpData[i] || 0);
-      const swRestockY = restockX.map(i => swData[i] || 0);
-
       trendChart = new Chart(ctx3, {
         type: 'line',
         data: {
@@ -866,15 +923,6 @@
               backgroundColor: 'rgba(52, 152, 219, 0.2)',
               tension: 0.4,
               pointBackgroundColor: '#3498db'
-            },
-            {
-              label: 'Restock (TP)',
-              data: Array(labels.length).fill(null).map((_, i) => restockX.includes(i) ? Math.max(...tpData, ...swData) * 0.9 : null),
-              pointStyle: 'triangle',
-              pointRadius: 8,
-              pointBackgroundColor: '#f39c12',
-              borderColor: 'transparent',
-              showLine: false
             }
           ]
         },
@@ -882,7 +930,7 @@
           responsive: true,
           plugins: {
             legend: { position: 'top' },
-            title: { display: true, text: 'Usage Trend with Restock Events' }
+            title: { display: true, text: 'Usage Trend' }
           },
           scales: {
             y: { beginAtZero: true, ticks: { stepSize: 1 }, title: { display: true, text: 'Quantity Taken' } },
@@ -903,46 +951,204 @@
       `;
     }
 
-    // Export to CSV
-    function exportToCsv() {
-      let csv = "data:text/csv;charset=utf-8,Item,Stock,In,Out\n";
-      ['tp','sw'].forEach(k => {
-        const i = items[k];
+    // --- EXPORT FUNCTIONS ---
+    function getExportLogs(range, startDate, endDate) {
+      let start, end;
+      const now = new Date();
+      now.setHours(23, 59, 59, 999);
+
+      if (range === 'all') {
+        return transactionLog;
+      } else if (range === 'mtd') {
+        start = new Date(now.getFullYear(), now.getMonth(), 1);
+        end = now;
+      } else if (range === 'ltd') {
+        // Life to Date - from the earliest transaction to now
+        if (transactionLog.length > 0) {
+          const timestamps = transactionLog.map(e => new Date(e.timestamp));
+          start = new Date(Math.min(...timestamps));
+        } else {
+          start = new Date(now.getFullYear(), 0, 1); // Default to current year if no transactions
+        }
+        end = now;
+      } else if (range === 'custom') {
+        if (!startDate || !endDate) return [];
+        start = new Date(startDate);
+        start.setHours(0, 0, 0, 0);
+        end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+      }
+
+      return transactionLog.filter(e => {
+        const t = new Date(e.timestamp);
+        return t >= start && t <= end;
+      });
+    }
+
+    function exportToCsv(filteredLog) {
+      const exportTime = new Date();
+      const exportTimeStr = exportTime.toLocaleString('en-GB');
+      
+      // Get the selected range
+      const selectedRange = document.querySelector('input[name="exportRange"]:checked').value;
+      let startDate, endDate, rangeStr;
+      
+      if (selectedRange === 'mtd') {
+        startDate = new Date(exportTime.getFullYear(), exportTime.getMonth(), 1);
+        endDate = exportTime;
+        rangeStr = `Month to Date (${startDate.toLocaleDateString('en-GB')} - ${endDate.toLocaleDateString('en-GB')})`;
+      } else if (selectedRange === 'ltd') {
+        if (transactionLog.length > 0) {
+          const timestamps = transactionLog.map(e => new Date(e.timestamp));
+          startDate = new Date(Math.min(...timestamps));
+        } else {
+          startDate = new Date(exportTime.getFullYear(), 0, 1);
+        }
+        endDate = exportTime;
+        rangeStr = `Life to Date (${startDate.toLocaleDateString('en-GB')} - ${endDate.toLocaleDateString('en-GB')})`;
+      } else if (selectedRange === 'custom') {
+        startDate = new Date(document.getElementById('exportStartDate').value);
+        endDate = new Date(document.getElementById('exportEndDate').value);
+        rangeStr = `Custom Range (${startDate.toLocaleDateString('en-GB')} - ${endDate.toLocaleDateString('en-GB')})`;
+      } else {
+        if (transactionLog.length > 0) {
+          const timestamps = transactionLog.map(e => new Date(e.timestamp));
+          startDate = new Date(Math.min(...timestamps));
+        } else {
+          startDate = new Date(exportTime.getFullYear(), 0, 1);
+        }
+        endDate = exportTime;
+        rangeStr = `All Data (${startDate.toLocaleDateString('en-GB')} - ${endDate.toLocaleDateString('en-GB')})`;
+      }
+      
+      // Calculate totals for the range
+      const rangeTotals = { tp: { in: 0, out: 0 }, sw: { in: 0, out: 0 } };
+      filteredLog.forEach(e => {
+        if (e.type === 'add' && ['tp', 'sw'].includes(e.itemKey)) {
+          rangeTotals[e.itemKey].in += e.quantity;
+        } else if (e.type === 'take' && ['tp', 'sw'].includes(e.itemKey)) {
+          rangeTotals[e.itemKey].out += e.quantity;
+        }
+      });
+      
+      let csv = "data:text/csv;charset=utf-8,";
+      csv += "Reception Stock Inventory Report\n";
+      csv += `Generated: ${exportTimeStr}\n`;
+      csv += `Range: ${rangeStr}\n`;
+      csv += `\n`;
+      csv += "Current Stock Status\n";
+      csv += "Item,Current Stock,Total In,Total Out\n";
+      
+      // Add current stock information (matching what's shown in the table)
+      ['tp', 'sw'].forEach(key => {
+        const i = items[key];
         csv += `${i.name},${i.stock},${i.in},${i.out}\n`;
       });
-      csv += "\n\nTransaction Log\nTimestamp,Action,Item,Qty,Person,Area\n";
-      [...transactionLog].reverse().forEach(e => {
+      
+      csv += `\n`;
+      csv += "Activity in Selected Range\n";
+      csv += "Item,Added In Range,Taken In Range\n";
+      
+      // Add activity information for the range
+      ['tp', 'sw'].forEach(key => {
+        csv += `${items[key].name},${rangeTotals[key].in},${rangeTotals[key].out}\n`;
+      });
+      
+      csv += `\n`;
+      csv += "Transaction Log\n";
+      csv += "Timestamp,Action,Item,Qty,Person,Area\n";
+      
+      // Add transaction log
+      [...filteredLog].reverse().forEach(e => {
         if (e.type === 'reset') return;
         const t = new Date(e.timestamp).toLocaleString('en-GB');
         let action = '', item = '', qty = '', person = e.person, area = '';
-        if (e.type === 'add') { action = 'Added'; item = e.itemKey === 'tp' ? 'TP' : 'SW'; qty = e.quantity; }
-        else if (e.type === 'take') { action = 'Taken'; item = e.itemKey === 'tp' ? 'Toilet Paper' : 'Saniwipes'; qty = e.quantity; area = e.area || ''; }
-        else if (e.type === 'use') { action = 'Used'; item = items[e.itemKey].name; qty = e.quantity; }
+        if (e.type === 'add') { 
+          action = 'Added'; 
+          item = e.itemKey === 'tp' ? 'TP' : 'SW'; 
+          qty = e.quantity; 
+        } else if (e.type === 'take') { 
+          action = 'Taken'; 
+          item = e.itemKey === 'tp' ? 'Toilet Paper' : 'Saniwipes'; 
+          qty = e.quantity; 
+          area = e.area || ''; 
+        } else if (e.type === 'use') { 
+          action = 'Used'; 
+          item = items[e.itemKey].name; 
+          qty = e.quantity; 
+        }
         csv += `"${t}","${action}","${item}","${qty}","${person}","${area}"\n`;
       });
+      
       const a = document.createElement("a");
       a.href = encodeURI(csv);
-      a.download = "inventory_report.csv";
+      a.download = `inventory_report_${exportTime.toISOString().slice(0, 10)}.csv`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
     }
 
-    // Export to PDF
-    function exportToPdf() {
+    function exportToPdf(filteredLog) {
       if (!window.jspdf) return alert("jsPDF not loaded.");
       const { jsPDF } = window.jspdf;
       const doc = new jsPDF();
       if (!doc.autoTable) return alert("AutoTable not loaded.");
 
+      const exportTime = new Date();
+      const exportTimeStr = exportTime.toLocaleString('en-GB');
+      
+      // Get the selected range
+      const selectedRange = document.querySelector('input[name="exportRange"]:checked').value;
+      let startDate, endDate, rangeStr;
+      
+      if (selectedRange === 'mtd') {
+        startDate = new Date(exportTime.getFullYear(), exportTime.getMonth(), 1);
+        endDate = exportTime;
+        rangeStr = `Month to Date (${startDate.toLocaleDateString('en-GB')} - ${endDate.toLocaleDateString('en-GB')})`;
+      } else if (selectedRange === 'ltd') {
+        if (transactionLog.length > 0) {
+          const timestamps = transactionLog.map(e => new Date(e.timestamp));
+          startDate = new Date(Math.min(...timestamps));
+        } else {
+          startDate = new Date(exportTime.getFullYear(), 0, 1);
+        }
+        endDate = exportTime;
+        rangeStr = `Life to Date (${startDate.toLocaleDateString('en-GB')} - ${endDate.toLocaleDateString('en-GB')})`;
+      } else if (selectedRange === 'custom') {
+        startDate = new Date(document.getElementById('exportStartDate').value);
+        endDate = new Date(document.getElementById('exportEndDate').value);
+        rangeStr = `Custom Range (${startDate.toLocaleDateString('en-GB')} - ${endDate.toLocaleDateString('en-GB')})`;
+      } else {
+        if (transactionLog.length > 0) {
+          const timestamps = transactionLog.map(e => new Date(e.timestamp));
+          startDate = new Date(Math.min(...timestamps));
+        } else {
+          startDate = new Date(exportTime.getFullYear(), 0, 1);
+        }
+        endDate = exportTime;
+        rangeStr = `All Data (${startDate.toLocaleDateString('en-GB')} - ${endDate.toLocaleDateString('en-GB')})`;
+      }
+      
+      // Calculate totals for the range
+      const rangeTotals = { tp: { in: 0, out: 0 }, sw: { in: 0, out: 0 } };
+      filteredLog.forEach(e => {
+        if (e.type === 'add' && ['tp', 'sw'].includes(e.itemKey)) {
+          rangeTotals[e.itemKey].in += e.quantity;
+        } else if (e.type === 'take' && ['tp', 'sw'].includes(e.itemKey)) {
+          rangeTotals[e.itemKey].out += e.quantity;
+        }
+      });
+
       doc.setFontSize(18);
       doc.text("Reception Stock Inventory Report", 10, 10);
       doc.setFontSize(12);
-      doc.text("Generated: " + new Date().toLocaleString(), 10, 20);
+      doc.text(`Generated: ${exportTimeStr}`, 10, 20);
+      doc.text(`Range: ${rangeStr}`, 10, 30);
 
+      // Current stock status (matching what's shown in the table)
       doc.autoTable({
-        startY: 30,
-        head: [['Item', 'Stock', 'In', 'Out']],
+        startY: 40,
+        head: [['Item', 'Current Stock', 'Total In', 'Total Out']],
         body: [
           ['Toilet Paper', items.tp.stock, items.tp.in, items.tp.out],
           ['Saniwipes', items.sw.stock, items.sw.in, items.sw.out]
@@ -950,20 +1156,144 @@
         theme: 'grid'
       });
 
-      const finalY = doc.autoTable.previous ? doc.autoTable.previous.finalY + 10 : 80;
-      doc.text("Charts included in web version.", 10, finalY);
-      doc.text("Open in browser to view full charts.", 10, finalY + 10);
+      let finalY = doc.autoTable.previous ? doc.autoTable.previous.finalY + 10 : 90;
+      
+      // Activity in selected range
+      doc.text("Activity in Selected Range", 10, finalY);
+      
+      doc.autoTable({
+        startY: finalY + 10,
+        head: [['Item', 'Added In Range', 'Taken In Range']],
+        body: [
+          ['Toilet Paper', rangeTotals.tp.in, rangeTotals.tp.out],
+          ['Saniwipes', rangeTotals.sw.in, rangeTotals.sw.out]
+        ],
+        theme: 'grid'
+      });
 
-      doc.save("inventory_report.pdf");
+      finalY = doc.autoTable.previous ? doc.autoTable.previous.finalY + 10 : 140;
+      
+      // Add transaction log
+      doc.text("Transaction Log", 10, finalY);
+      
+      const logData = filteredLog.filter(e => e.type !== 'reset').map(e => {
+        const t = new Date(e.timestamp).toLocaleString('en-GB');
+        let action = '', item = '', qty = '', person = e.person, area = '';
+        if (e.type === 'add') { 
+          action = 'Added'; 
+          item = e.itemKey === 'tp' ? 'TP' : 'SW'; 
+          qty = e.quantity; 
+        } else if (e.type === 'take') { 
+          action = 'Taken'; 
+          item = e.itemKey === 'tp' ? 'Toilet Paper' : 'Saniwipes'; 
+          qty = e.quantity; 
+          area = e.area || ''; 
+        } else if (e.type === 'use') { 
+          action = 'Used'; 
+          item = items[e.itemKey].name; 
+          qty = e.quantity; 
+        }
+        return [t, action, item, qty, person, area];
+      });
+
+      if (logData.length > 0) {
+        doc.autoTable({
+          startY: finalY + 10,
+          head: [['Timestamp', 'Action', 'Item', 'Qty', 'Person', 'Area']],
+          body: logData,
+          theme: 'grid'
+        });
+      } else {
+        doc.text("No transactions in selected period.", 10, finalY + 10);
+      }
+
+      doc.save(`inventory_report_${exportTime.toISOString().slice(0, 10)}.pdf`);
     }
+
+    // --- MODAL HANDLING ---
+    let currentExportType = null;
+
+    // Get the modal
+    const modal = document.getElementById("exportModal");
+    const closeBtn = document.getElementsByClassName("close")[0];
+    const cancelBtn = document.getElementById("cancelExportBtn");
+    const confirmBtn = document.getElementById("confirmExportBtn");
+
+    // When the user clicks the export buttons, open the modal
+    document.getElementById('exportCsvBtn').addEventListener('click', function() {
+      currentExportType = 'csv';
+      modal.style.display = "block";
+      // Reset the modal to default
+      document.querySelector('input[name="exportRange"][value="all"]').checked = true;
+      document.getElementById('customDateRange').style.display = 'none';
+    });
+
+    document.getElementById('exportPdfBtn').addEventListener('click', function() {
+      currentExportType = 'pdf';
+      modal.style.display = "block";
+      document.querySelector('input[name="exportRange"][value="all"]').checked = true;
+      document.getElementById('customDateRange').style.display = 'none';
+    });
+
+    // When the user clicks on <span> (x), close the modal
+    closeBtn.onclick = function() {
+      modal.style.display = "none";
+    }
+
+    // When the user clicks on cancel, close the modal
+    cancelBtn.onclick = function() {
+      modal.style.display = "none";
+    }
+
+    // When the user clicks on confirm, export
+    confirmBtn.onclick = function() {
+      const selectedRange = document.querySelector('input[name="exportRange"]:checked').value;
+      let startDate, endDate;
+      if (selectedRange === 'custom') {
+        startDate = document.getElementById('exportStartDate').value;
+        endDate = document.getElementById('exportEndDate').value;
+        if (!startDate || !endDate) {
+          alert('Please select both start and end dates for custom range.');
+          return;
+        }
+      }
+      const filteredLog = getExportLogs(selectedRange, startDate, endDate);
+      if (currentExportType === 'csv') {
+        exportToCsv(filteredLog);
+      } else if (currentExportType === 'pdf') {
+        exportToPdf(filteredLog);
+      }
+      modal.style.display = "none";
+    }
+
+    // When the user clicks anywhere outside of the modal, close it
+    window.onclick = function(event) {
+      if (event.target == modal) {
+        modal.style.display = "none";
+      }
+    }
+
+    // Show/hide custom date range based on radio selection
+    document.querySelectorAll('input[name="exportRange"]').forEach(radio => {
+      radio.addEventListener('change', function() {
+        if (this.value === 'custom') {
+          document.getElementById('customDateRange').style.display = 'block';
+          // Set default dates for custom range: current month
+          const now = new Date();
+          const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+          document.getElementById('exportStartDate').value = firstDay.toISOString().split('T')[0];
+          document.getElementById('exportEndDate').value = now.toISOString().split('T')[0];
+        } else {
+          document.getElementById('customDateRange').style.display = 'none';
+        }
+      });
+    });
 
     // Init
     document.addEventListener('DOMContentLoaded', () => {
       loadData();
       document.getElementById('itemSelect').addEventListener('change', updateFormSections);
       document.getElementById('resetBtn').addEventListener('click', resetStats);
-      document.getElementById('exportCsvBtn').addEventListener('click', exportToCsv);
-      document.getElementById('exportPdfBtn').addEventListener('click', exportToPdf);
       updateFormSections();
     });
   </script>
