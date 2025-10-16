@@ -276,6 +276,27 @@
     .modal-buttons button {
       margin-left: 10px;
     }
+    .notification {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      padding: 15px 20px;
+      background-color: #2ecc71;
+      color: white;
+      border-radius: 8px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+      transform: translateY(100px);
+      opacity: 0;
+      transition: transform 0.3s ease, opacity 0.3s ease;
+      z-index: 1001;
+    }
+    .notification.show {
+      transform: translateY(0);
+      opacity: 1;
+    }
+    .notification.error {
+      background-color: #e74c3c;
+    }
     @media (max-width: 600px) {
       .item {
         flex-direction: column;
@@ -306,12 +327,39 @@
   <!-- jsPDF -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.0/jspdf.plugin.autotable.min.js"></script>
+  <!-- Firebase SDK -->
+  <script type="module">
+    // Import the functions you need from the SDKs you need
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-app.js";
+    import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-analytics.js";
+    import { getFirestore, doc, getDoc, setDoc, collection, query, orderBy, limit, getDocs } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-firestore.js";
+    
+    // Your web app's Firebase configuration
+    const firebaseConfig = {
+      apiKey: "AIzaSyCUDjdepxi_SXHX5oQaBHOWiuPOpL_PD-Q",
+      authDomain: "rolls-62386.firebaseapp.com",
+      projectId: "rolls-62386",
+      storageBucket: "rolls-62386.firebasestorage.app",
+      messagingSenderId: "23042926517",
+      appId: "1:23042926517:web:67cd53e1664bdb14279bfc",
+      measurementId: "G-EB09V97E52"
+    };
+
+    // Initialize Firebase
+    const app = initializeApp(firebaseConfig);
+    const analytics = getAnalytics(app);
+    const db = getFirestore(app);
+    
+    // Make Firebase available globally
+    window.firebaseDB = db;
+  </script>
 </head>
 <body>
   <h1>Reception Stock Inventory</h1>
   <div class="container">
     <div class="inventory-section">
       <h2>Inventory Management</h2>
+      
       <div class="item">
         <label for="itemSelect">Select Item:</label>
         <select id="itemSelect">
@@ -418,11 +466,17 @@
     </div>
   </div>
 
-  <script>
-    // JSON Bin API Configuration
-    const JSON_BIN_API_URL = 'https://api.jsonbin.io/v3/b/68872a55ae596e708fbcdef8';
-    const JSON_BIN_API_KEY = '$2a$10$BqM/s2f2kqZGoB5V14WtWOPOVO5/ccx/wZtBqmQsgeQqh6WMp42We';
+  <!-- Notification -->
+  <div id="notification" class="notification"></div>
+
+  <script type="module">
+    // Import Firebase functions
+    import { doc, getDoc, setDoc, collection, query, orderBy, limit, getDocs } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-firestore.js";
+    
+    // Constants
     const RESET_PASSWORD = 'Superb@123';
+    const COLLECTION_NAME = 'inventory';
+    const DOC_ID = 'reception_stock';
 
     // Inventory
     let items = {
@@ -437,52 +491,76 @@
 
     const stockDisplayIds = { tp: 'tpStock', sw: 'swStock' };
 
-    // Load data
-    function loadData() {
-      fetch(JSON_BIN_API_URL, {
-        method: 'GET',
-        headers: { 'X-Master-Key': JSON_BIN_API_KEY }
-      })
-      .then(r => r.ok ? r.json() : initializeDefaults())
-      .then(data => {
-        if (data?.record) {
-          if (data.record.inventory.tp) items.tp = data.record.inventory.tp;
-          if (data.record.inventory.sw) items.sw = data.record.inventory.sw;
-          transactionLog = Array.isArray(data.record.transactionLog) ? data.record.transactionLog : [];
+    // Show notification
+    function showNotification(message, isError = false) {
+      const notification = document.getElementById('notification');
+      notification.textContent = message;
+      notification.className = 'notification show';
+      if (isError) notification.classList.add('error');
+      
+      setTimeout(() => {
+        notification.classList.remove('show');
+      }, 3000);
+    }
+
+    // Load data from Firebase
+    async function loadData() {
+      try {
+        const db = window.firebaseDB;
+        if (!db) {
+          throw new Error('Firebase not initialized');
         }
-      })
-      .catch(() => {
-        console.warn('Using defaults or localStorage');
-        const saved = localStorage.getItem('inventory');
-        if (saved) try { const s = JSON.parse(saved); items.tp = s.tp || items.tp; items.sw = s.sw || items.sw; } catch {}
-        const log = localStorage.getItem('transactionLog');
-        if (log) try { transactionLog = JSON.parse(log); } catch {}
-        if (transactionLog.length === 0) initializeDefaults();
-      })
-      .finally(() => {
+        
+        const docRef = doc(db, COLLECTION_NAME, DOC_ID);
+        const docSnap = await getDoc(docRef);
+        
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          if (data.inventory) {
+            if (data.inventory.tp) items.tp = data.inventory.tp;
+            if (data.inventory.sw) items.sw = data.inventory.sw;
+          }
+          if (data.transactionLog && Array.isArray(data.transactionLog)) {
+            transactionLog = data.transactionLog;
+          }
+        } else {
+          // Document doesn't exist, initialize with defaults
+          initializeDefaults();
+          await saveData();
+        }
+      } catch (error) {
+        console.error('Error loading data from Firebase:', error);
+        showNotification('Error loading data from Firebase. Please check your connection.', true);
+      } finally {
         updateDisplay();
         updateStats();
         updateLog();
         generateReports();
         setupFilters();
         updateFormSections();
-      });
+      }
     }
 
-    function saveData() {
-      const data = { inventory: { tp: items.tp, sw: items.sw }, transactionLog };
-      fetch(JSON_BIN_API_URL, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Master-Key': JSON_BIN_API_KEY,
-          'X-Bin-Meta': 'false'
-        },
-        body: JSON.stringify(data)
-      }).catch(() => {
-        localStorage.setItem('inventory', JSON.stringify({ tp: items.tp, sw: items.sw }));
-        localStorage.setItem('transactionLog', JSON.stringify(transactionLog));
-      });
+    // Save data to Firebase
+    async function saveData() {
+      try {
+        const db = window.firebaseDB;
+        if (!db) {
+          throw new Error('Firebase not initialized');
+        }
+        
+        const data = { 
+          inventory: { tp: items.tp, sw: items.sw }, 
+          transactionLog,
+          lastUpdated: new Date().toISOString()
+        };
+        
+        await setDoc(doc(db, COLLECTION_NAME, DOC_ID), data);
+        showNotification('Data saved successfully to Firebase');
+      } catch (error) {
+        console.error('Error saving data to Firebase:', error);
+        showNotification('Error saving data to Firebase. Please try again.', true);
+      }
     }
 
     function initializeDefaults() {
@@ -618,7 +696,7 @@
       }
     }
 
-    function addStock() {
+    async function addStock() {
       const key = document.getElementById('itemSelect').value;
       if (!['tp', 'sw'].includes(key)) return alert('Stock cannot be added for this item.');
       const qty = Number(document.getElementById('quantityIn').value);
@@ -637,7 +715,7 @@
         person
       });
 
-      saveData();
+      await saveData();
       updateDisplay();
       updateStats();
       updateLog();
@@ -649,7 +727,7 @@
       document.getElementById('personIn').value = '';
     }
 
-    function takeStock() {
+    async function takeStock() {
       const key = document.getElementById('itemSelect').value;
       const qty = Number(document.getElementById('quantityOut').value);
       const person = document.getElementById('personOut').value.trim();
@@ -673,7 +751,7 @@
       if (key === 'tp') entry.area = area;
 
       transactionLog.push(entry);
-      saveData();
+      await saveData();
       updateDisplay();
       updateStats();
       updateLog();
@@ -686,7 +764,7 @@
       if (key === 'tp') document.getElementById('toiletArea').value = '';
     }
 
-    function recordUse() {
+    async function recordUse() {
       const key = document.getElementById('itemSelect').value;
       const qty = Number(document.getElementById('quantityUse').value);
       const person = document.getElementById('personUse').value.trim();
@@ -701,7 +779,7 @@
         person
       });
 
-      saveData();
+      await saveData();
       updateLog();
       generateReports();
       renderCharts();
@@ -710,7 +788,7 @@
       document.getElementById('personUse').value = '';
     }
 
-    function resetStats() {
+    async function resetStats() {
       const p = prompt('Password:');
       if (p !== RESET_PASSWORD) return alert('Incorrect password.');
       if (!confirm('Reset all?')) return;
@@ -719,7 +797,7 @@
       items.sw = { name: 'Saniwipes', stock: 0, in: 0, out: 0 };
       transactionLog = [{ timestamp: new Date().toISOString(), type: 'reset', person: 'Admin' }];
 
-      saveData();
+      await saveData();
       updateDisplay();
       updateStats();
       updateLog();
